@@ -49,7 +49,7 @@ public class CompactUi : WindowMediatorSubscriberBase
     private readonly PlayerPerformanceConfigService _playerPerformanceConfigService;
     private readonly ServerConfigService _serverConfigService;
     private Dictionary<ObjectKind, Dictionary<string, CharacterAnalyzer.FileDataEntry>>? _cachedAnalysis;
-    private bool _hasUpdate = false;
+    private bool _hasCharacterAnalysisUpdate = false;
     private List<IDrawFolder> _drawFolders;
     private Pair? _lastAddedUser;
     private string _lastAddedUserComment = string.Empty;
@@ -88,7 +88,7 @@ public class CompactUi : WindowMediatorSubscriberBase
 
         Mediator.Subscribe<CharacterDataAnalyzedMessage>(this, _ =>
         {
-            _hasUpdate = true;
+            _hasCharacterAnalysisUpdate = true;
         });
 
         AllowPinning = false;
@@ -933,14 +933,14 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     private void CheckForCharacterAnalysis()
     {
-        if (_hasUpdate)
+        if (_hasCharacterAnalysisUpdate)
         {
             _cachedAnalysis = _characterAnalyzer.LastAnalysis
                 .ToDictionary(
                     kvp => (Dalamud.Game.ClientState.Objects.Enums.ObjectKind)kvp.Key,
                     kvp => kvp.Value
                 );
-            _hasUpdate = false;
+            _hasCharacterAnalysisUpdate = false;
         }
     }
 

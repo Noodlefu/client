@@ -137,7 +137,11 @@ public sealed class CharacterAnalyzer : MediatorSubscriberBase, IDisposable
             LastAnalysis[obj.Key] = data;
         }
 
+        charaData.CalculatedVRAMBytes = LastAnalysis.Sum(c => c.Value.Sum(f => f.Value.OriginalSize));
+        charaData.CalculatedTriangles = LastAnalysis.Sum(c => c.Value.Sum(f => f.Value.Triangles));
+
         Mediator.Publish(new CharacterDataAnalyzedMessage());
+        Mediator.Publish(new CharacterDataCreatedAndAnalyzedMessage(charaData));
 
         _lastDataHash = charaData.DataHash.Value;
     }

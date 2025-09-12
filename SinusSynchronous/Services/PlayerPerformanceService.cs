@@ -7,6 +7,8 @@ using SinusSynchronous.Services.Mediator;
 using SinusSynchronous.UI;
 using SinusSynchronous.WebAPI.Files.Models;
 using Microsoft.Extensions.Logging;
+using SinusSynchronous.PlayerData.Pairs;
+using LaciSynchroni.Common.Data.Enum;
 
 namespace SinusSynchronous.Services;
 
@@ -30,6 +32,38 @@ public class PlayerPerformanceService
         _xivDataAnalyzer = xivDataAnalyzer;
     }
 
+    public bool CheckPredownloadThreshold(Pair pair, CharacterData characterData)
+    {
+        if (!characterData.CalculatedVRAMBytes.HasValue || !characterData.CalculatedTriangles.HasValue)
+            return true;
+        if(characterData.CalculatedVRAMBytes == 0 && characterData.CalculatedTriangles == 0)
+            return true;
+
+        var config = _playerPerformanceConfigService.Current;
+        if (config.UIDsToIgnore.Exists(uid => string.Equals(uid, pair.UserData.Alias, StringComparison.Ordinal) || 
+                                              string.Equals(uid, pair.UserData.UID, StringComparison.Ordinal)))
+            return true;
+        
+        bool isPrefPerm = pair.UserPair.OwnPermissions.HasFlag(UserPermissions.Sticky);
+        if (isPrefPerm) {
+            return true;
+        }
+
+        if (config.AutoPausePlayersExceedingThresholds &&
+            (IsVramOverConfig(config.VRAMSizeAutoPauseThresholdMiB, characterData.CalculatedVRAMBytes) ||
+             IsTrianglesOverConfig(config.TrisAutoPauseThresholdThousands, characterData.CalculatedTriangles)))
+        {
+            _mediator.Publish(new NotificationMessage($"{pair.PlayerName} ({pair.UserData.AliasOrUID}) exceeds performance thresholds",
+                $"Player {pair.PlayerName} ({pair.UserData.AliasOrUID}) exceeds your configured VRAM or triangle auto-pause thresholds (" +
+                $"{UiSharedService.ByteToString(characterData.CalculatedVRAMBytes.Value, true)}/{config.VRAMSizeAutoPauseThresholdMiB} MiB and " +
+                $"{characterData.CalculatedTriangles}/{config.TrisAutoPauseThresholdThousands * 1000} triangles).",
+                SinusConfiguration.Models.NotificationType.Warning));
+            return false;
+        }
+
+        return true;
+    }
+
     public async Task<bool> CheckBothThresholds(PairHandler pairHandler, CharacterData charaData)
     {
         var config = _playerPerformanceConfigService.Current;
@@ -46,7 +80,7 @@ public class PlayerPerformanceService
         var vramUsage = pairHandler.Pair.LastAppliedApproximateVRAMBytes;
         var triUsage = pairHandler.Pair.LastAppliedDataTris;
 
-        bool isPrefPerm = pairHandler.Pair.UserPair.OwnPermissions.HasFlag(LaciSynchroni.Common.Data.Enum.UserPermissions.Sticky);
+        bool isPrefPerm = pairHandler.Pair.UserPair.OwnPermissions.HasFlag(UserPermissions.Sticky);
 
         bool exceedsTris = CheckForThreshold(config.WarnOnExceedingThresholds, config.TrisWarningThresholdThousands * 1000,
             triUsage, config.WarnOnPreferredPermissionsExceedingThresholds, isPrefPerm);
@@ -107,7 +141,7 @@ public class PlayerPerformanceService
 
         long triUsage = 0;
 
-        if (!charaData.FileReplacements.TryGetValue(LaciSynchroni.Common.Data.Enum.ObjectKind.Player, out List<FileReplacementData>? playerReplacements))
+        if (!charaData.FileReplacements.TryGetValue(ObjectKind.Player, out List<FileReplacementData>? playerReplacements))
         {
             pair.LastAppliedDataTris = 0;
             return true;
@@ -125,14 +159,14 @@ public class PlayerPerformanceService
 
         pair.LastAppliedDataTris = triUsage;
 
-        _logger.LogDebug("Calculated VRAM usage for {p}", pairHandler);
+        _logger.LogDebug("Calculated VRAM usage for {PairHandler}", pairHandler);
 
         // no warning of any kind on ignored pairs
         if (config.UIDsToIgnore
             .Exists(uid => string.Equals(uid, pair.UserData.Alias, StringComparison.Ordinal) || string.Equals(uid, pair.UserData.UID, StringComparison.Ordinal)))
             return true;
 
-        bool isPrefPerm = pair.UserPair.OwnPermissions.HasFlag(LaciSynchroni.Common.Data.Enum.UserPermissions.Sticky);
+        bool isPrefPerm = pair.UserPair.OwnPermissions.HasFlag(UserPermissions.Sticky);
 
         // now check auto pause
         if (CheckForThreshold(config.AutoPausePlayersExceedingThresholds, config.TrisAutoPauseThresholdThousands * 1000,
@@ -162,7 +196,7 @@ public class PlayerPerformanceService
 
         long vramUsage = 0;
 
-        if (!charaData.FileReplacements.TryGetValue(LaciSynchroni.Common.Data.Enum.ObjectKind.Player, out List<FileReplacementData>? playerReplacements))
+        if (!charaData.FileReplacements.TryGetValue(ObjectKind.Player, out List<FileReplacementData>? playerReplacements))
         {
             pair.LastAppliedApproximateVRAMBytes = 0;
             return true;
@@ -201,14 +235,14 @@ public class PlayerPerformanceService
 
         pair.LastAppliedApproximateVRAMBytes = vramUsage;
 
-        _logger.LogDebug("Calculated VRAM usage for {p}", pairHandler);
+        _logger.LogDebug("Calculated VRAM usage for {PairHandler}", pairHandler);
 
         // no warning of any kind on ignored pairs
         if (config.UIDsToIgnore
             .Exists(uid => string.Equals(uid, pair.UserData.Alias, StringComparison.Ordinal) || string.Equals(uid, pair.UserData.UID, StringComparison.Ordinal)))
             return true;
 
-        bool isPrefPerm = pair.UserPair.OwnPermissions.HasFlag(LaciSynchroni.Common.Data.Enum.UserPermissions.Sticky);
+        bool isPrefPerm = pair.UserPair.OwnPermissions.HasFlag(UserPermissions.Sticky);
 
         // now check auto pause
         if (CheckForThreshold(config.AutoPausePlayersExceedingThresholds, config.VRAMSizeAutoPauseThresholdMiB * 1024 * 1024,
@@ -229,6 +263,16 @@ public class PlayerPerformanceService
         }
 
         return true;
+    }
+
+    private static bool IsVramOverConfig(long? vramConfig, long? vramCharacter)
+    {
+        return (vramConfig > 0) && (vramConfig * 1024 * 1024 < vramCharacter);
+    }
+
+    private static bool IsTrianglesOverConfig(long? trianglesConfig, long? trianglesCharacter)
+    {
+        return (trianglesConfig > 0) && (trianglesConfig * 1000 < trianglesCharacter);
     }
 
     private static bool CheckForThreshold(bool thresholdEnabled, long threshold, long value, bool checkForPrefPerm, bool isPrefPerm) =>

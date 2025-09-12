@@ -225,12 +225,20 @@ public class DrawUserPair
         else
         {
             using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudRed);
-            _uiSharedService.IconText(_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.OneSided
-                ? FontAwesomeIcon.ArrowsLeftRight
-                : (_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.Bidirectional
-                    ? FontAwesomeIcon.User : FontAwesomeIcon.Users));
+            if (_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.Bidirectional)
+            {
+                _uiSharedService.IconText(_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.OneSided ?
+                    FontAwesomeIcon.ArrowsLeftRight :
+                    (FontAwesomeIcon.User));
+            }
+            else
+            {
+                _uiSharedService.IconText(_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.OneSided ?
+                    FontAwesomeIcon.ArrowsLeftRight :
+                    (FontAwesomeIcon.Users));
+            }
 
-            if(!string.IsNullOrEmpty(userPairText))
+            if (!string.IsNullOrEmpty(userPairText))
                 userPairText += UiSharedService.TooltipSeparator;
 
             userPairText += _pair.UserData.AliasOrUID + " is offline";
@@ -238,7 +246,7 @@ public class DrawUserPair
 
         if (_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.OneSided)
         {
-            userPairText += UiSharedService.TooltipSeparator + "User has not added you back";
+            userPairText += UiSharedService.TooltipSeparator + "User not found";
         }
         else if (_pair.IndividualPairStatus == LaciSynchroni.Common.Data.Enum.IndividualPairStatus.Bidirectional)
         {
@@ -274,13 +282,12 @@ public class DrawUserPair
 
         UiSharedService.AttachToolTip(userPairText);
 
-        if (_performanceConfigService.Current.ShowPerformanceIndicator
-            && !_performanceConfigService.Current.UIDsToIgnore
-                .Exists(uid => string.Equals(uid, UserPair.User.Alias, StringComparison.Ordinal) || string.Equals(uid, UserPair.User.UID, StringComparison.Ordinal))
-            && ((_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0 && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes)
-                || (_performanceConfigService.Current.TrisWarningThresholdThousands > 0 && _performanceConfigService.Current.TrisWarningThresholdThousands * 1000 < _pair.LastAppliedDataTris))
-            && (!_pair.UserPair.OwnPermissions.IsSticky()
-                || _performanceConfigService.Current.WarnOnPreferredPermissionsExceedingThresholds))
+        if (_performanceConfigService.Current.ShowPerformanceIndicator &&
+            !_performanceConfigService.Current.UIDsToIgnore.Exists(uid => string.Equals(uid, UserPair.User.Alias, StringComparison.Ordinal) || string.Equals(uid, UserPair.User.UID, StringComparison.Ordinal)) &&
+            (IsVramOverConfig(_performanceConfigService.Current.VRAMSizeWarningThresholdMiB, _pair.LastAppliedApproximateVRAMBytes) ||
+             IsTrianglesOverConfig(_performanceConfigService.Current.TrisWarningThresholdThousands, _pair.LastAppliedDataTris)) &&
+             (!_pair.UserPair.OwnPermissions.IsSticky() ||
+               _performanceConfigService.Current.WarnOnPreferredPermissionsExceedingThresholds))
         {
             ImGui.SameLine();
 
@@ -288,20 +295,54 @@ public class DrawUserPair
 
             string userWarningText = "WARNING: This user exceeds one or more of your defined thresholds:" + UiSharedService.TooltipSeparator;
             bool shownVram = false;
-            if (_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0
-                && _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes)
+
+            if (_performanceConfigService.Current.VRAMSizeWarningThresholdMiB > 0 &&
+                _performanceConfigService.Current.VRAMSizeWarningThresholdMiB * 1024 * 1024 < _pair.LastAppliedApproximateVRAMBytes)
             {
                 shownVram = true;
                 userWarningText += $"Approx. VRAM Usage: Used: {UiSharedService.ByteToString(_pair.LastAppliedApproximateVRAMBytes)}, Threshold: {_performanceConfigService.Current.VRAMSizeWarningThresholdMiB} MiB";
             }
-            if (_performanceConfigService.Current.TrisWarningThresholdThousands > 0
-                && _performanceConfigService.Current.TrisWarningThresholdThousands * 1024 < _pair.LastAppliedDataTris)
+            if (_performanceConfigService.Current.TrisWarningThresholdThousands > 0 &&
+                _performanceConfigService.Current.TrisWarningThresholdThousands * 1024 < _pair.LastAppliedDataTris)
             {
                 if (shownVram) userWarningText += Environment.NewLine;
                 userWarningText += $"Approx. Triangle count: Used: {_pair.LastAppliedDataTris}, Threshold: {_performanceConfigService.Current.TrisWarningThresholdThousands * 1000}";
             }
 
             UiSharedService.AttachToolTip(userWarningText);
+        }
+        else if (_pair.LastReceivedCharacterData is not null &&
+                 _pair.LastReceivedCharacterData.CalculatedVRAMBytes.HasValue &&
+                 _pair.LastReceivedCharacterData.CalculatedTriangles.HasValue &&
+                 _performanceConfigService.Current.ShowPerformanceIndicator &&
+                 (!_pair.UserPair.OwnPermissions.IsSticky() || _performanceConfigService.Current.WarnOnPreferredPermissionsExceedingThresholds) &&
+                 !_performanceConfigService.Current.UIDsToIgnore.Exists(uid => string.Equals(uid, UserPair.User.Alias, StringComparison.Ordinal) || string.Equals(uid, UserPair.User.UID, StringComparison.Ordinal)) &&
+                 (IsVramOverConfig(_performanceConfigService.Current.VRAMSizeAutoPauseThresholdMiB, _pair.LastReceivedCharacterData.CalculatedVRAMBytes.Value) ||
+                  IsTrianglesOverConfig(_performanceConfigService.Current.TrisAutoPauseThresholdThousands, _pair.LastAppliedDataTris)))
+        {
+            ImGui.SameLine();
+
+            _uiSharedService.IconText(FontAwesomeIcon.ExclamationTriangle, ImGuiColors.DalamudYellow);
+
+            string userWarningText = "This user exceeds one or more of your defined auto-pause thresholds and was not loaded:" + UiSharedService.TooltipSeparator;
+            bool shownVram = false;
+
+            var localChara = _pair.LastReceivedCharacterData;
+            if (localChara != null)
+            {
+                if (IsVramOverConfig(_performanceConfigService.Current.VRAMSizeWarningThresholdMiB, localChara.CalculatedVRAMBytes.Value))
+                {
+                    shownVram = true;
+                    userWarningText += $"Approx. VRAM Usage: Used: {UiSharedService.ByteToString(localChara.CalculatedVRAMBytes.Value)}, Threshold: {_performanceConfigService.Current.VRAMSizeAutoPauseThresholdMiB} MiB";
+                }
+                if (IsTrianglesOverConfig(_performanceConfigService.Current.TrisWarningThresholdThousands, localChara.CalculatedTriangles.Value))
+                {
+                    if (shownVram) userWarningText += Environment.NewLine;
+                    userWarningText += $"Approx. Triangle count: Used: {localChara.CalculatedTriangles.Value}, Threshold: {_performanceConfigService.Current.TrisAutoPauseThresholdThousands * 1000}";
+                }
+
+                UiSharedService.AttachToolTip(userWarningText);
+            }
         }
 
         ImGui.SameLine();
@@ -598,5 +639,15 @@ public class DrawUserPair
             UiSharedService.AttachToolTip("Hold CTRL and SHIFT and click to transfer ownership of this Syncshell to "
                 + (_pair.UserData.AliasOrUID) + Environment.NewLine + "WARNING: This action is irreversible.");
         }
+    }
+
+    private static bool IsVramOverConfig(long? vramConfig, long? vramCharacter)
+    {
+        return (vramConfig > 0) && (vramConfig * 1024 * 1024 < vramCharacter);
+    }
+
+    private static bool IsTrianglesOverConfig(long? trianglesConfig, long? trianglesCharacter)
+    {
+        return (trianglesConfig > 0) && (trianglesConfig * 1000 < trianglesCharacter);
     }
 }

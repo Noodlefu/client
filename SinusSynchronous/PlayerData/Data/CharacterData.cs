@@ -14,6 +14,8 @@ public class CharacterData
     public string ManipulationString { get; set; } = string.Empty;
     public string MoodlesData { get; set; } = string.Empty;
     public string PetNamesData { get; set; } = string.Empty;
+    public long? CalculatedVRAMBytes { get; set; } = null;
+    public long? CalculatedTriangles { get; set; } = null;
 
     public void SetFragment(ObjectKind kind, CharacterDataFragment? fragment)
     {
@@ -25,6 +27,8 @@ public class CharacterData
             ManipulationString = playerFragment?.ManipulationString ?? string.Empty;
             MoodlesData = playerFragment?.MoodlesData ?? string.Empty;
             PetNamesData = playerFragment?.PetNamesData ?? string.Empty;
+            CalculatedVRAMBytes = playerFragment?.CalculatedVRAMBytes;
+            CalculatedTriangles = playerFragment?.CalculatedTriangles;
         }
 
         if (fragment is null)
@@ -70,7 +74,9 @@ public class CharacterData
             CustomizePlusData = CustomizePlusScale.ToDictionary(d => d.Key, d => d.Value),
             HonorificData = HonorificData,
             MoodlesData = MoodlesData,
-            PetNamesData = PetNamesData
+            PetNamesData = PetNamesData,
+            CalculatedVRAMBytes = CalculatedVRAMBytes,
+            CalculatedTriangles = CalculatedTriangles,
         };
     }
 }

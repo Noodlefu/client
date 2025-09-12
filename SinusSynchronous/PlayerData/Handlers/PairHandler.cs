@@ -144,6 +144,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
             Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, nameof(PairHandler), EventSeverity.Warning,
                 "Cannot apply character data: you are in combat or performing music, deferring application")));
             Logger.LogDebug("[BASE-{appBase}] Received data but player is in combat or performing", applicationBase);
+            
             _dataReceivedInDowntime = new(applicationBase, characterData, forceApplyCustomization);
             SetUploading(isUploading: false);
             return;
@@ -155,18 +156,21 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
                 "Cannot apply character data: Receiving Player is in an invalid state, deferring application")));
             Logger.LogDebug("[BASE-{appBase}] Received data but player was in invalid state, charaHandlerIsNull: {charaIsNull}, playerPointerIsNull: {ptrIsNull}",
                 applicationBase, _charaHandler == null, PlayerCharacter == IntPtr.Zero);
+            
             var hasDiffMods = characterData.CheckUpdatedData(applicationBase, _cachedData, Logger,
                 this, forceApplyCustomization, forceApplyMods: false)
                 .Any(p => p.Value.Contains(PlayerChanges.ModManip) || p.Value.Contains(PlayerChanges.ModFiles));
+            
             _forceApplyMods = hasDiffMods || _forceApplyMods || (PlayerCharacter == IntPtr.Zero && _cachedData == null);
             _cachedData = characterData;
+            
             Logger.LogDebug("[BASE-{appBase}] Setting data: {hash}, forceApplyMods: {force}", applicationBase, _cachedData.DataHash.Value, _forceApplyMods);
             return;
         }
 
         SetUploading(isUploading: false);
 
-        Logger.LogDebug("[BASE-{appbase}] Applying data for {player}, forceApplyCustomization: {forced}, forceApplyMods: {forceMods}", applicationBase, this, forceApplyCustomization, _forceApplyMods);
+        Logger.LogDebug("[BASE-{appbase}] Applying data for {Player}, forceApplyCustomization: {forced}, forceApplyMods: {forceMods}", applicationBase, this, forceApplyCustomization, _forceApplyMods);
         Logger.LogDebug("[BASE-{appbase}] Hash for data is {newHash}, current cache hash is {oldHash}", applicationBase, characterData.DataHash.Value, _cachedData?.DataHash.Value ?? "NODATA");
 
         if (string.Equals(characterData.DataHash.Value, _cachedData?.DataHash.Value ?? string.Empty, StringComparison.Ordinal) && !forceApplyCustomization) return;
@@ -175,7 +179,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         {
             Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, nameof(PairHandler), EventSeverity.Warning,
                 "Cannot apply character data: you are in GPose, a Cutscene or Penumbra/Glamourer is not available")));
-            Logger.LogInformation("[BASE-{appbase}] Application of data for {player} while in cutscene/gpose or Penumbra/Glamourer unavailable, returning", applicationBase, this);
+            Logger.LogInformation("[BASE-{appbase}] Application of data for {Player} while in cutscene/gpose or Penumbra/Glamourer unavailable, returning", applicationBase, this);
             return;
         }
 
@@ -189,6 +193,14 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
                 _serverInfo.ServerName,
                 renderLockServerIndex,
                 _serverConfigManager.GetServerByIndex(renderLockServerIndex).ServerName);
+            Logger.LogInformation("Cannot apply character data to {Player}: Another server you are connected to already syncs this target", PlayerName);
+            return;
+        }
+
+        if (_playerPerformanceService.CheckPredownloadThreshold(this.Pair, characterData))
+        {
+            Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, nameof(PairHandler), EventSeverity.Informational,
+            "Cannot apply character data to {Player}. Pre-download checks show they are over your auto-pause thresholds.")));
             return;
         }
 
@@ -548,8 +560,10 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         {
             var pc = _dalamudUtil.FindPlayerByNameHash(Pair.Ident);
             if (pc == default((string, nint))) return;
+            
             Logger.LogDebug("One-Time Initializing {this}", this);
             Initialize(pc.Name);
+            
             Logger.LogDebug("One-Time Initialized {this}", this);
             Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, nameof(PairHandler), EventSeverity.Informational,
                 $"Initializing User For Character {pc.Name}")));

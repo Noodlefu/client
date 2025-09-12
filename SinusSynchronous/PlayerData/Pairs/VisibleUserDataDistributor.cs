@@ -14,6 +14,7 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
     private readonly DalamudUtilService _dalamudUtil;
     private readonly FileUploadManager _fileTransferManager;
     private readonly PairManager _pairManager;
+    private readonly CharacterAnalyzer _characterAnalyzer;
     private CharacterData? _lastCreatedData;
     private CharacterData? _uploadingCharacterData = null;
     private readonly List<ServerBasedUserKey> _previouslyVisiblePlayers = [];
@@ -24,26 +25,18 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
 
 
     public VisibleUserDataDistributor(ILogger<VisibleUserDataDistributor> logger, ApiController apiController, DalamudUtilService dalamudUtil,
+        CharacterAnalyzer characterAnalyzer,
         PairManager pairManager, SinusMediator mediator, FileUploadManager fileTransferManager) : base(logger, mediator)
     {
         _apiController = apiController;
         _dalamudUtil = dalamudUtil;
         _pairManager = pairManager;
         _fileTransferManager = fileTransferManager;
+        _characterAnalyzer = characterAnalyzer;
         Mediator.Subscribe<DelayedFrameworkUpdateMessage>(this, (_) => FrameworkOnUpdate());
-        Mediator.Subscribe<CharacterDataCreatedMessage>(this, (msg) =>
+        Mediator.Subscribe<CharacterDataCreatedAndAnalyzedMessage>(this, (msg) =>
         {
-            var newData = msg.CharacterData;
-            if (_lastCreatedData == null || (!string.Equals(newData.DataHash.Value, _lastCreatedData.DataHash.Value, StringComparison.Ordinal)))
-            {
-                _lastCreatedData = newData;
-                Logger.LogTrace("Storing new data hash {hash}", newData.DataHash.Value);
-                PushToAllVisibleUsers(forced: true);
-            }
-            else
-            {
-                Logger.LogTrace("Data hash {hash} equal to stored data", newData.DataHash.Value);
-            }
+            PushCharacterDataToVisiblePairs(msg.CharacterData);
         });
 
         Mediator.Subscribe<ConnectedMessage>(this, (msg) => PushToAllVisibleUsers(false, msg.serverIndex));
@@ -51,6 +44,20 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         {
             _previouslyVisiblePlayers.RemoveAll(key => key.ServerIndex == msg.ServerIndex);
         });
+    }
+
+    private void PushCharacterDataToVisiblePairs(CharacterData newCharacterData)
+    {
+        if (_lastCreatedData == null || (!string.Equals(newCharacterData.DataHash.Value, _lastCreatedData.DataHash.Value, StringComparison.Ordinal)))
+        {
+            _lastCreatedData = newCharacterData;
+            Logger.LogTrace("Storing new data hash {Hash}", newCharacterData.DataHash.Value);
+            PushToAllVisibleUsers(forced: true);
+        }
+        else
+        {
+            Logger.LogTrace("Data hash {Hash} equal to stored data", newCharacterData.DataHash.Value);
+        }
     }
 
     protected override void Dispose(bool disposing)
