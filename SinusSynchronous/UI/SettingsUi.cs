@@ -23,7 +23,6 @@ using SinusSynchronous.Utils;
 using SinusSynchronous.WebAPI;
 using SinusSynchronous.WebAPI.Files;
 using SinusSynchronous.WebAPI.Files.Models;
-using SinusSynchronous.WebAPI.SignalR.Utils;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
@@ -1264,6 +1263,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 var serverUri = selectedServer.ServerUri;
                 var serverHubUri = selectedServer.ServerHubUri ?? selectedServer.ServerUri;
                 var useAdvancedUris = selectedServer.UseAdvancedUris;
+                var healthCheckIntervalSeconds = selectedServer.HealthCheckIntervalSeconds;
 
                 if (ImGui.InputText("Service Name", ref serverName, 255))
                 {
@@ -1302,6 +1302,16 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 _uiShared.DrawHelpText("You normally do not need to change this, if you don't know what this is or what it's for, keep it to WebSockets." + Environment.NewLine
                     + "If you run into connection issues with e.g. VPNs, try ServerSentEvents first before trying out LongPolling." + UiSharedService.TooltipSeparator
                     + "Note: if the server does not support a specific Transport Type it will fall through to the next automatically: WebSockets > ServerSentEvents > LongPolling");
+
+                ImGui.SetNextItemWidth(200);
+                if (ImGui.SliderInt("HealthCheck Interval", ref healthCheckIntervalSeconds, 10, 60))
+                {
+                    selectedServer.HealthCheckIntervalSeconds = healthCheckIntervalSeconds;
+                    _serverConfigurationManager.Save();
+                }
+                _uiShared.DrawHelpText("Interval in seconds in which a healthcheck will be sent to the server to ensure connectivity." + Environment.NewLine
+                    + "Minimum is 10 seconds, maximum is 60 seconds. Default is 30 seconds." + Environment.NewLine
+                    + "You normally do not need to change this.");
 
                 if (_dalamudUtilService.IsWine)
                 {

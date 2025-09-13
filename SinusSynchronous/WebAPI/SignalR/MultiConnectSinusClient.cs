@@ -145,11 +145,11 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
             {
                 await TryConnect().ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException ex)
             {
                 // cancellation token was triggered, either through user input or an error
                 // if this is the case, we just log it and leave. Connection wasn't established set, nothing to erase
-                _logger.LogWarning("Connection attempt cancelled");
+                _logger.LogWarning(ex, "Connection attempt cancelled.");
                 return;
             }
             catch (HttpRequestException ex)
@@ -267,25 +267,6 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
         _serverState = state;
     }
 
-    private async Task DisposeHubAsync()
-    {
-        if (_sinusHub == null || _isDisposed) return;
-
-        _logger.LogDebug("Disposing current HubConnection");
-        _isDisposed = true;
-
-        _sinusHub.Closed -= SinusHubOnClosed;
-        _sinusHub.Reconnecting -= SinusHubOnReconnecting;
-        _sinusHub.Reconnected -= SinusHubOnReconnectedAsync;
-
-        await _sinusHub.StopAsync().ConfigureAwait(false);
-        await _sinusHub.DisposeAsync().ConfigureAwait(false);
-
-        _sinusHub = null;
-
-        Logger.LogDebug("Current HubConnection disposed");
-    }
-
     private HubConnection InitializeHubConnection(CancellationToken ct)
     {
         var transportType = ServerToUse.HttpTransportType switch
@@ -313,7 +294,7 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
             serverHubUri :
             ServerToUse.ServerUri + IServerHub.Path;
 
-        _logger.LogDebug("Building new HubConnection using transport {transport}", transportType);
+        _logger.LogDebug("Building new HubConnection using transport {TransportType}", transportType);
 
         _sinusHub = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
@@ -418,7 +399,6 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
         return dto;
     }
 
-
     private void InitializeApiHooks()
     {
         if (_sinusHub == null) return;
@@ -467,11 +447,10 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
     {
         while (!ct.IsCancellationRequested && _sinusHub != null)
         {
-            await Task.Delay(TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(ServerToUse.HealthCheckIntervalSeconds), ct).ConfigureAwait(false);
             Logger.LogDebug("Checking Client Health State");
 
             bool requireReconnect = await RefreshTokenAsync(ct).ConfigureAwait(false);
-
             if (requireReconnect) break;
 
             _ = await CheckClientHealth().ConfigureAwait(false);
@@ -514,13 +493,13 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
     {
         foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
         {
-            Logger.LogDebug("Group: {entry}", entry);
+            Logger.LogDebug("Group: {Entry}", entry);
             _pairManager.AddGroup(entry, ServerIndex);
         }
 
         foreach (var userPair in await UserGetPairedClients().ConfigureAwait(false))
         {
-            Logger.LogDebug("Individual Pair: {userPair}", userPair);
+            Logger.LogDebug("Individual Pair: {UserPair}", userPair);
             _pairManager.AddUserPair(userPair, ServerIndex);
         }
     }
@@ -532,12 +511,12 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
         {
             var world = await _dalamudUtil.GetWorldIdAsync().ConfigureAwait(false);
             dto = new((ushort)world, _lastCensus.RaceId, _lastCensus.TribeId, _lastCensus.Gender);
-            Logger.LogDebug("Attaching Census Data: {data}", dto);
+            Logger.LogDebug("Attaching Census Data: {Dto}", dto);
         }
 
         foreach (var entry in await UserGetOnlinePairs(dto).ConfigureAwait(false))
         {
-            Logger.LogDebug("Pair online: {pair}", entry);
+            Logger.LogDebug("Pair online: {Entry}", entry);
             _pairManager.MarkPairOnline(entry, ServerIndex, sendNotif: false);
         }
     }
@@ -568,12 +547,12 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
             string.Equals(f.CharacterName, charaName, StringComparison.Ordinal) && f.WorldId == worldId);
         if (auth?.AutoLogin ?? false)
         {
-            Logger.LogInformation("Logging into {chara}", charaName);
+            Logger.LogInformation("Logging into {CharaName}", charaName);
             await CreateConnectionsAsync().ConfigureAwait(false);
         }
         else
         {
-            Logger.LogInformation("Not logging into {chara}, auto login disabled", charaName);
+            Logger.LogInformation("Not logging into {CharaName}, auto login disabled", charaName);
             await StopConnectionAsync(ServerState.NoAutoLogon).ConfigureAwait(false);
         }
     }
@@ -602,7 +581,7 @@ public partial class MultiConnectSinusClient : DisposableMediatorSubscriberBase
             while (pair.UserPair!.OwnPermissions != perm)
             {
                 await Task.Delay(250, cts.Token).ConfigureAwait(false);
-                Logger.LogTrace("Waiting for permissions change for {data}", userData);
+                Logger.LogTrace("Waiting for permissions change for {UserData}", userData);
             }
 
             perm.SetPaused(paused: false);

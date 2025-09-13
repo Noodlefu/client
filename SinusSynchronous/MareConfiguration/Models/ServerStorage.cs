@@ -15,5 +15,6 @@ public class ServerStorage
     public bool UseOAuth2 { get; set; } = false;
     public string? OAuthToken { get; set; } = null;
     public HttpTransportType HttpTransportType { get; set; } = HttpTransportType.WebSockets;
+    public int HealthCheckIntervalSeconds { get; set; } = 30;
     public bool ForceWebSockets { get; set; } = false;
 }
