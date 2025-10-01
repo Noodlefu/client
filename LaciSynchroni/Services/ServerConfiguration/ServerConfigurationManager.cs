@@ -178,6 +178,11 @@ public class ServerConfigurationManager
         return _serverConfigService.Current.ServerStorage[idx];
     }
 
+    public int GetServerCount()
+    {
+        return _serverConfigService.Current.ServerStorage.Count;
+    }
+
     public string GetDiscordUserFromToken(ServerStorage server)
     {
         JwtSecurityTokenHandler handler = new JwtSecurityTokenHandler();
