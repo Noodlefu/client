@@ -1361,6 +1361,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     if (_uiShared.IconTextButton(FontAwesomeIcon.Trash, "Delete Service") && UiSharedService.CtrlPressed())
                     {
                         _serverConfigurationManager.DeleteServer(selectedServer);
+                        _lastSelectedServerIndex = _serverConfigurationManager.ServerIndexes.LastOrDefault(0);
+                        // If, after deletion, no more server is left, bounce to intro UI again
+                        if (!_serverConfigurationManager.AnyServerConfigured)
+                        {
+                            Mediator.Publish(new SwitchToIntroUiMessage());
+                        }
                     }
                 }
 

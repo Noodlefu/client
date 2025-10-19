@@ -162,6 +162,11 @@ public class CompactUi : WindowMediatorSubscriberBase
 
     protected override void DrawInternal()
     {
+        if (!_serverConfigManager.AnyServerConfigured)
+        {
+            IsOpen = false;
+            return;
+        }
         _windowContentWidth = UiSharedService.GetWindowContentRegionWidth();
         // if (!_apiController.IsCurrentVersion)
         // {
