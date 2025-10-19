@@ -169,6 +169,11 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
 
     protected override void DrawInternal()
     {
+        if (!_serverConfigurationManager.AnyServerConfigured)
+        {
+            IsOpen = false;
+            return;
+        }
         if (!_comboHybridUsedLastFrame)
         {
             _openComboHybridId = null;
