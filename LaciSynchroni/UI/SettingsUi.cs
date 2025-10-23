@@ -1276,6 +1276,34 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     _serverConfigurationManager.Save();
                 }
 
+                ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
+                if (_uiShared.IconTextButton(FontAwesomeIcon.Link, "Copy Join Link for this Service"))
+                {
+                    try
+                    {
+                        var link = LocalHttpServer.GenerateServerJoinLink(
+                            selectedServer.ServerName,
+                            selectedServer.ServerUri,
+                            selectedServer.UseOAuth2,
+                            selectedServer.UseAdvancedUris ? selectedServer.ServerHubUri : null,
+                            selectedServer.BypassVersionCheck
+                        );
+                        
+                        ImGui.SetClipboardText(link);
+                        Mediator.Publish(new NotificationMessage(
+                            "Link Copied",
+                            $"Join link for '{_lastSelectedServerName}' copied to clipboard!",
+                            NotificationType.Info
+                        ));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to generate join link");
+                    }
+                }
+                UiSharedService.AttachToolTip("Copy a shareable join link for this server to clipboard");
+                ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
+
                 if (ImGui.Checkbox("Bypass API version check", ref bypassVersionCheck))
                 {
                     selectedServer.BypassVersionCheck = bypassVersionCheck;
