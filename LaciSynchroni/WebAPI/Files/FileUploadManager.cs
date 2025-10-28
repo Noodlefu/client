@@ -27,6 +27,10 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
     /// One Cancellation token per server, since we can concurrently upload to each server connected.
     /// </summary>
     private readonly ConcurrentDictionary<ServerIndex, CancellationTokenSource> _cancellationTokens = new();
+    /// <summary>
+    /// Per-server upload tracking to prevent race conditions during concurrent uploads.
+    /// </summary>
+    private readonly ConcurrentDictionary<ServerIndex, List<FileTransfer>> _currentUploads = new();
 
     public FileUploadManager(ILogger<FileUploadManager> logger, SyncMediator mediator,
         SyncConfigService syncConfigService,
@@ -45,7 +49,18 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         });
     }
 
-    public List<FileTransfer> CurrentUploads { get; } = [];
+    /// <summary>
+    /// Returns all uploads across all servers. Thread-safe aggregate view.
+    /// </summary>
+    public List<FileTransfer> CurrentUploads => _currentUploads.Values.SelectMany(x => x).ToList();
+
+    /// <summary>
+    /// Gets the upload list for a specific server. Returns a new empty list if none exists.
+    /// </summary>
+    private List<FileTransfer> GetServerUploads(ServerIndex serverIndex)
+    {
+        return _currentUploads.GetOrAdd(serverIndex, _ => []);
+    }
 
     public async Task DeleteAllFiles(int serverIndex)
     {
@@ -107,7 +122,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         if (unverifiedUploads.Any())
         {
             await UploadUnverifiedFiles(serverIndex, unverifiedUploads, visiblePlayers, uploadToken).ConfigureAwait(false);
-            Logger.LogInformation("Upload complete for {Hash}", data.DataHash.Value);
+            var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
+            Logger.LogInformation("Upload complete for {Hash} to {serverUri}", data.DataHash.Value, serverUri);
         }
 
         foreach (var kvp in data.FileReplacements)
@@ -153,7 +169,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
     private async Task UploadFile(int serverIndex, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
     {
-        Logger.LogInformation("[{hash}] Uploading {size}", fileHash, UiSharedService.ByteToString(compressedFile.Length));
+        var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
+        Logger.LogInformation("[{hash}] Uploading {size} to {serverUri}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverUri);
 
         if (uploadToken.IsCancellationRequested) return;
 
@@ -190,7 +207,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         {
             try
             {
-                CurrentUploads.Single(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerIndex == serverIndex).Transferred = prog.Uploaded;
+                var serverUploads = GetServerUploads(serverIndex);
+                serverUploads.Single(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal)).Transferred = prog.Uploaded;
             }
             catch (Exception ex)
             {
@@ -215,11 +233,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         Logger.LogDebug("Verifying {count} files", unverifiedUploadHashes.Count);
         var filesToUpload = await FilesSend(serverIndex, [.. unverifiedUploadHashes], visiblePlayers.Select(p => p.UID).ToList(), uploadToken).ConfigureAwait(false);
 
+        var serverUploads = GetServerUploads(serverIndex);
         foreach (var file in filesToUpload.Where(f => !f.IsForbidden).DistinctBy(f => f.Hash))
         {
             try
             {
-                CurrentUploads.Add(new UploadFileTransfer(file, serverIndex)
+                serverUploads.Add(new UploadFileTransfer(file, serverIndex)
                 {
                     Total = new FileInfo(_fileDbManager.GetFileCacheByHash(file.Hash)!.ResolvedFilepath).Length,
                 });
@@ -243,35 +262,35 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file.Hash] = DateTime.UtcNow;
         }
 
-        var totalSize = CurrentUploads.Where(c => c.ServerIndex == serverIndex).Sum(c => c.Total);
+        var totalSize = serverUploads.Sum(c => c.Total);
         Logger.LogDebug("Compressing and uploading files");
         Task uploadTask = Task.CompletedTask;
-        foreach (var file in CurrentUploads.Where(f => f.ServerIndex == serverIndex && f.CanBeTransferred && !f.IsTransferred).ToList())
+        foreach (var file in serverUploads.Where(f => f.CanBeTransferred && !f.IsTransferred).ToList())
         {
             Logger.LogDebug("[{hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
-            CurrentUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerIndex == serverIndex).Total = data.Item2.Length;
+            serverUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal)).Total = data.Item2.Length;
             Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
             await uploadTask.ConfigureAwait(false);
             uploadTask = UploadFile(serverIndex, data.Item2, file.Hash, true, uploadToken);
             uploadToken.ThrowIfCancellationRequested();
         }
 
-        var uploadsForThisServer = CurrentUploads.Where(c => c.ServerIndex == serverIndex).ToList();
-        if (uploadsForThisServer.Any())
+        if (serverUploads.Any())
         {
             await uploadTask.ConfigureAwait(false);
 
-            var compressedSize = uploadsForThisServer.Sum(c => c.Total);
-            Logger.LogDebug("Upload complete, compressed {size} to {compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
+            var compressedSize = serverUploads.Sum(c => c.Total);
+            var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
+            Logger.LogDebug("Upload complete to {serverUri}, compressed {size} to {compressed}", serverUri, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
         }
 
-        foreach (var file in unverifiedUploadHashes.Where(c => !CurrentUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal) && u.ServerIndex == serverIndex)))
+        foreach (var file in unverifiedUploadHashes.Where(c => !serverUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal))))
         {
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
+        _currentUploads.TryRemove(serverIndex, out _);
     }
 
     private void CancelUpload(ServerIndex serverIndex)
@@ -286,7 +305,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             token.Cancel();
             token.Dispose();
         }
-        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
+        _currentUploads.TryRemove(serverIndex, out _);
     }
 
     private Uri RequireUriForServer(int serverIndex)
@@ -310,7 +329,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             c.Dispose();
         });
         _cancellationTokens.Clear();
-        CurrentUploads.Clear();
+        _currentUploads.Clear();
         _verifiedUploadedHashes.Clear();
     }
 
