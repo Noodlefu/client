@@ -122,8 +122,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         if (unverifiedUploads.Any())
         {
             await UploadUnverifiedFiles(serverIndex, unverifiedUploads, visiblePlayers, uploadToken).ConfigureAwait(false);
-            var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
-            Logger.LogInformation("Upload complete for {Hash} to {serverUri}", data.DataHash.Value, serverUri);
+            var serverName = _serverManager.GetServerByIndex(serverIndex).ServerName;
+            Logger.LogInformation("Upload complete for {Hash} to {serverName}", data.DataHash.Value, serverName);
         }
 
         foreach (var kvp in data.FileReplacements)
@@ -169,8 +169,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
     private async Task UploadFile(int serverIndex, byte[] compressedFile, string fileHash, bool postProgress, CancellationToken uploadToken)
     {
-        var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
-        Logger.LogInformation("[{hash}] Uploading {size} to {serverUri}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverUri);
+        var serverName = _serverManager.GetServerByIndex(serverIndex).ServerName;
+        Logger.LogInformation("[{hash}] Uploading {size} to {serverName}", fileHash, UiSharedService.ByteToString(compressedFile.Length), serverName);
 
         if (uploadToken.IsCancellationRequested) return;
 
@@ -281,8 +281,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             await uploadTask.ConfigureAwait(false);
 
             var compressedSize = serverUploads.Sum(c => c.Total);
-            var serverUri = _serverManager.GetServerByIndex(serverIndex).ServerUri;
-            Logger.LogDebug("Upload complete to {serverUri}, compressed {size} to {compressed}", serverUri, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
+            var serverName = _serverManager.GetServerByIndex(serverIndex).ServerName;
+            Logger.LogDebug("Upload complete to {serverName}, compressed {size} to {compressed}", serverName, UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
         }
 
         foreach (var file in unverifiedUploadHashes.Where(c => !serverUploads.Exists(u => string.Equals(u.Hash, c, StringComparison.Ordinal))))
