@@ -82,6 +82,13 @@ public class ServerConfigurationManager
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
         var worldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult();
         
+        // Early validation: check if player is actually loaded
+        if (charaName == "--" || worldId == 0)
+        {
+            _logger.LogTrace("GetOAuth2: Player not loaded (charaName: {chara}, worldId: {world}), returning null", charaName, worldId);
+            return null;
+        }
+        
         ulong cid = 0;
         try
         {
@@ -132,6 +139,13 @@ public class ServerConfigurationManager
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
         var worldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult();
+        
+        // Early validation: check if player is actually loaded
+        if (charaName == "--" || worldId == 0)
+        {
+            _logger.LogTrace("GetSecretKey: Player not loaded (charaName: {chara}, worldId: {world}), returning null", charaName, worldId);
+            return null;
+        }
         
         ulong cid = 0;
         try
@@ -298,12 +312,24 @@ public class ServerConfigurationManager
 
     internal void AddServer(ServerStorage serverStorage)
     {
+        // Ensure new server has a UUID
+        if (serverStorage.ServerUuid == Guid.Empty)
+        {
+            serverStorage.ServerUuid = Guid.NewGuid();
+        }
+        
         _serverConfigService.Current.ServerStorage.Add(serverStorage);
         Save();
     }
     
     internal void SetFirstServer(ServerStorage serverStorage)
     {
+        // Ensure new server has a UUID
+        if (serverStorage.ServerUuid == Guid.Empty)
+        {
+            serverStorage.ServerUuid = Guid.NewGuid();
+        }
+        
         _serverConfigService.Current.ServerStorage.Clear();
         _serverConfigService.Current.ServerStorage.Add(serverStorage);
         Save();

@@ -127,6 +127,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
     {
         _uiShared.ResetOAuthTasksState();
         _speedTestCts = new();
+        
+        // Initialize selected server UUID if not set
+        if (_lastSelectedServerUuid == Guid.Empty && _serverConfigurationManager.AnyServerConfigured)
+        {
+            _lastSelectedServerUuid = _serverConfigurationManager.ServerUuids.First();
+        }
     }
 
     public override void OnClose()
@@ -1234,6 +1240,23 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         ImGuiHelpers.ScaledDummy(new Vector2(10, 10));
 
+        // Validate selected server UUID and reset if invalid
+        if (!_serverConfigurationManager.ServerUuids.Contains(_lastSelectedServerUuid))
+        {
+            _lastSelectedServerUuid = _serverConfigurationManager.ServerUuids.Any() 
+                ? _serverConfigurationManager.ServerUuids.First() 
+                : Guid.Empty;
+            _lastSelectedServerName = string.Empty;
+        }
+        
+        // Return early if no servers are configured
+        if (!_serverConfigurationManager.AnyServerConfigured)
+        {
+            _uiShared.BigText("No servers configured");
+            UiSharedService.TextWrapped("Use the table above to add a server configuration.");
+            return;
+        }
+        
         var selectedServer = _serverConfigurationManager.GetServerByUuid(_lastSelectedServerUuid);
         bool useOauth = selectedServer.UseOAuth2;
 
@@ -1361,6 +1384,14 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     if (_uiShared.IconTextButton(FontAwesomeIcon.Trash, "Delete Service") && UiSharedService.CtrlPressed())
                     {
                         _serverConfigurationManager.DeleteServer(selectedServer);
+                        
+                        // Reset selected server if the deleted one was selected
+                        var availableServers = _serverConfigurationManager.ServerUuids.ToList();
+                        if (!availableServers.Contains(_lastSelectedServerUuid))
+                        {
+                            _lastSelectedServerUuid = availableServers.Any() ? availableServers.First() : Guid.Empty;
+                            _lastSelectedServerName = string.Empty;
+                        }
                     }
                 }
 
@@ -2050,7 +2081,10 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawSettingsContent()
     {
-        _lastSelectedServerName = _apiController.GetServerName(_lastSelectedServerUuid);
+        if (_lastSelectedServerUuid != Guid.Empty)
+        {
+            _lastSelectedServerName = _apiController.GetServerName(_lastSelectedServerUuid);
+        }
 
         if (_apiController.IsServerConnected(_lastSelectedServerUuid))
         {
