@@ -84,9 +84,11 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         if (_usersToPushDataTo.Count > 0)
         {
             Logger.LogDebug("Pushing data {hash} for {count} visible players", _lastCreatedData?.DataHash.Value ?? "UNKNOWN", _usersToPushDataTo.Count);
-            foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+            // Only push to servers where we have users to push data to
+            var serverIndexesToPush = _usersToPushDataTo.Select(u => u.ServerIndex).Distinct();
+            foreach (int idx in serverIndexesToPush)
             {
-                PushCharacterData(connectedServerIndex, forced);
+                PushCharacterData(idx, forced);
             }
         }
     }
@@ -108,9 +110,11 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         {
             _usersToPushDataTo.Add(user);
         }
-        foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+        // Only push to servers where we have users to push data to
+        var serverIndexesToPush = _usersToPushDataTo.Select(u => u.ServerIndex).Distinct();
+        foreach (int serverIndex in serverIndexesToPush)
         {
-            PushCharacterData(connectedServerIndex);
+            PushCharacterData(serverIndex);
         }
     }
 
