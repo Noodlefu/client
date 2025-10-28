@@ -26,7 +26,7 @@ internal class JoinSyncshellUI : WindowMediatorSubscriberBase
     private readonly ServerSelectorSmall _serverSelector;
 
     private string _desiredSyncshellToJoin = string.Empty;
-    private int _desiredServerForSyncshell = 0;
+    private Guid _desiredServerForSyncshell;
 
     private GroupJoinInfoDto? _groupJoinInfo = null;
     private DefaultPermissionsDto _ownPermissions = null!;
@@ -40,13 +40,12 @@ internal class JoinSyncshellUI : WindowMediatorSubscriberBase
         _uiSharedService = uiSharedService;
         _apiController = apiController;
         _serverConfigurationManager = serverConfigurationManager;
-        _serverSelector = new ServerSelectorSmall(index =>
+        _serverSelector = new ServerSelectorSmall(serverUuid =>
         {
-            _desiredServerForSyncshell = index;
-            // Also update default permissions
-            // They must not be null because only connected servers can be connected
-            _ownPermissions = _apiController.GetDefaultPermissionsForServer(index)!.DeepClone();
+            _desiredServerForSyncshell = serverUuid;
+            _ownPermissions = _apiController.GetDefaultPermissionsForServer(serverUuid)!.DeepClone();
         });
+        _desiredServerForSyncshell = _apiController.ConnectedServerUuids.FirstOrDefault();
         SizeConstraints = new()
         {
             MinimumSize = new(700, 400),
@@ -55,8 +54,7 @@ internal class JoinSyncshellUI : WindowMediatorSubscriberBase
 
         Mediator.Subscribe<DisconnectedMessage>(this, (_) =>
         {
-            // Only disconnect if we have no server left to join to. The selector will auto-swap to the next available server.
-            if (_apiController.ConnectedServerIndexes.Length <= 0)
+            if (_apiController.ConnectedServerUuids.Length <= 0)
             {
                 IsOpen = false;
             }
@@ -96,7 +94,7 @@ internal class JoinSyncshellUI : WindowMediatorSubscriberBase
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted("Syncshell Server");
             ImGui.SameLine(200);
-            _serverSelector.Draw(_serverConfigurationManager.GetServerNames(), _apiController.ConnectedServerIndexes, 400);
+            _serverSelector.Draw(_serverConfigurationManager.GetServerInfo(), _apiController.ConnectedServerUuids, 400);
 
             ImGui.AlignTextToFramePadding();
             ImGui.TextUnformatted("Syncshell ID");
@@ -108,7 +106,6 @@ internal class JoinSyncshellUI : WindowMediatorSubscriberBase
             ImGui.SameLine(200);
             ImGui.InputTextWithHint("##syncshellpw", "Password", ref _syncshellPassword, 50, ImGuiInputTextFlags.Password);
 
-            // TODO disable when there is no more joins left
             using (ImRaii.Disabled(string.IsNullOrEmpty(_desiredSyncshellToJoin) || string.IsNullOrEmpty(_syncshellPassword)))
             {
                 if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "Join Syncshell"))

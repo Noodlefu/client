@@ -1,4 +1,5 @@
-﻿using Dalamud.Game.Gui.ContextMenu;
+﻿using System;
+using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Data.Comparer;
@@ -39,7 +40,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         _pairFactory = pairFactory;
         _configurationService = configurationService;
         _dalamudContextMenu = dalamudContextMenu;
-        Mediator.Subscribe<DisconnectedMessage>(this, (msg) => ClearPairs(msg.ServerIndex));
+        Mediator.Subscribe<DisconnectedMessage>(this, (msg) => ClearPairs(msg.ServerUuid));
         Mediator.Subscribe<CutsceneEndMessage>(this, (_) => ReapplyPairData());
         _directPairsInternal = DirectPairsLazy();
         _groupPairsInternal = GroupPairsLazy();
@@ -55,28 +56,28 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     public Pair? LastAddedUser { get; internal set; }
     public Dictionary<Pair, List<GroupFullInfoDto>> PairsWithGroups => _pairsWithGroupsInternal.Value;
 
-    public void AddGroup(GroupFullInfoDto dto, int serverIndex)
+    public void AddGroup(GroupFullInfoDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key] = dto;
         RecreateLazy();
     }
 
-    public void AddGroupPair(GroupPairFullInfoDto dto, int serverIndex)
+    public void AddGroupPair(GroupPairFullInfoDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.ContainsKey(key))
             _allClientPairs[key] = _pairFactory.Create(new UserFullPairDto(dto.User,
                 IndividualPairStatus.None,
-                [dto.Group.GID], dto.SelfToOtherPermissions, dto.OtherToSelfPermissions), serverIndex);
+                [dto.Group.GID], dto.SelfToOtherPermissions, dto.OtherToSelfPermissions), serverUuid);
         else _allClientPairs[key].UserPair.Groups.Add(dto.GID);
         RecreateLazy();
     }
 
-    public Pair? GetPairByUID(int serverIndex, string uid)
+    public Pair? GetPairByUID(Guid serverUuid, string uid)
     {
         var existingPair =
-            _allClientPairs.FirstOrDefault(f => string.Equals(f.Key.UserData.UID, uid, StringComparison.Ordinal) && f.Key.ServerIndex == serverIndex);
+            _allClientPairs.FirstOrDefault(f => string.Equals(f.Key.UserData.UID, uid, StringComparison.Ordinal) && f.Key.ServerUuid == serverUuid);
         if (!Equals(existingPair, default(KeyValuePair<ServerBasedUserKey, Pair>)))
         {
             return existingPair.Value;
@@ -85,12 +86,12 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         return null;
     }
 
-    public void AddUserPair(UserFullPairDto dto, int serverIndex)
+    public void AddUserPair(UserFullPairDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.ContainsKey(key))
         {
-            _allClientPairs[key] = _pairFactory.Create(dto, serverIndex);
+            _allClientPairs[key] = _pairFactory.Create(dto, serverUuid);
         }
         else
         {
@@ -101,12 +102,12 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void AddUserPair(UserPairDto dto, int serverIndex, bool addToLastAddedUser = true)
+    public void AddUserPair(UserPairDto dto, Guid serverUuid, bool addToLastAddedUser = true)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.ContainsKey(key))
         {
-            _allClientPairs[key] = _pairFactory.Create(dto, serverIndex);
+            _allClientPairs[key] = _pairFactory.Create(dto, serverUuid);
         }
         else
         {
@@ -122,23 +123,23 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void ClearPairs(int serverIndex)
+    public void ClearPairs(Guid serverUuid)
     {
         Logger.LogDebug("Clearing all Pairs");
-        DisposePairs(serverIndex);
+        DisposePairs(serverUuid);
         _allClientPairs.Keys
-            .Where(key => key.ServerIndex == serverIndex)
+            .Where(key => key.ServerUuid == serverUuid)
             .ToList()
             .ForEach(key => _allClientPairs.Remove(key, out _));
         _allGroups.Keys
-            .Where(key => key.ServerIndex == serverIndex)
+            .Where(key => key.ServerUuid == serverUuid)
             .ToList()
             .ForEach(key => _allGroups.Remove(key, out _));
         RecreateLazy();
     }
 
-    public List<Pair> GetOnlineUserPairs(int serverIndex) => _allClientPairs
-        .Where(p => p.Key.ServerIndex == serverIndex)
+    public List<Pair> GetOnlineUserPairs(Guid serverUuid) => _allClientPairs
+        .Where(p => p.Key.ServerUuid == serverUuid)
         .Where(p => !string.IsNullOrEmpty(p.Value.GetPlayerNameHash())).Select(p => p.Value).ToList();
 
     public List<Pair> GetOnlineUserPairsAcrossAllServers() => _allClientPairs
@@ -147,12 +148,12 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     public int GetVisibleUserCountAcrossAllServers() => _allClientPairs
         .Count(p => p.Value.IsVisible);
 
-    public int GetVisibleUserCount(int serverIndex) => _allClientPairs.Where(p=> p.Key.ServerIndex == serverIndex).Count(p => p.Value.IsVisible);
+    public int GetVisibleUserCount(Guid serverUuid) => _allClientPairs.Where(p=> p.Key.ServerUuid == serverUuid).Count(p => p.Value.IsVisible);
 
-    public List<ServerBasedUserKey> GetVisibleUsers(int serverIndex) =>
+    public List<ServerBasedUserKey> GetVisibleUsers(Guid serverUuid) =>
     [
         .. _allClientPairs
-            .Where(p => p.Key.ServerIndex == serverIndex && p.Value.IsVisible)
+            .Where(p => p.Key.ServerUuid == serverUuid && p.Value.IsVisible)
             .Select(p => p.Key)
     ];
 
@@ -163,14 +164,14 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             .Select(p => p.Key)
     ];
 
-    public void MarkPairOffline(UserData user, int serverIndex)
+    public void MarkPairOffline(UserData user, Guid serverUuid)
     {
-        var key = BuildKey(user, serverIndex);
+        var key = BuildKey(user, serverUuid);
         if (_allClientPairs.TryGetValue(key, out var pair))
         {
             // Gets cleared when the pair is marked offline, but we need it after for the redraw
             var removedPairName = pair.PlayerName;
-            var message = new ServerBasedUserKey(user, serverIndex);
+            var message = new ServerBasedUserKey(user, serverUuid);
             Mediator.Publish(new ClearProfileDataMessage(message));
             pair.MarkOffline();
             RedrawStillVisiblePairs(pair, removedPairName);
@@ -179,12 +180,12 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void MarkPairOnline(OnlineUserIdentDto dto, int serverIndex, bool sendNotif = true)
+    public void MarkPairOnline(OnlineUserIdentDto dto, Guid serverUuid, bool sendNotif = true)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.ContainsKey(key)) throw new InvalidOperationException("No user found for " + dto);
 
-        var message = new ServerBasedUserKey(dto.User, serverIndex);
+        var message = new ServerBasedUserKey(dto.User, serverUuid);
         Mediator.Publish(new ClearProfileDataMessage(message));
 
         var pair = _allClientPairs[key];
@@ -215,9 +216,29 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void ReceiveCharaData(OnlineUserCharaDataDto dto, int serverIndex)
+    public void MarkPairOnline(UserFullPairDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
+        if (!_allClientPairs.ContainsKey(key))
+        {
+            AddUserPair(dto, serverUuid);
+            return;
+        }
+
+        var message = new ServerBasedUserKey(dto.User, serverUuid);
+        Mediator.Publish(new ClearProfileDataMessage(message));
+
+        var pair = _allClientPairs[key];
+        pair.UserPair.IndividualPairStatus = dto.IndividualPairStatus;
+        pair.UserPair.OwnPermissions = dto.OwnPermissions;
+        pair.UserPair.OtherPermissions = dto.OtherPermissions;
+        pair.CreateCachedPlayer();
+        RecreateLazy();
+    }
+
+    public void ReceiveCharaData(OnlineUserCharaDataDto dto, Guid serverUuid)
+    {
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.TryGetValue(key, out var pair))
             throw new InvalidOperationException("No user found for " + dto.User);
 
@@ -226,9 +247,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         _allClientPairs[key].ApplyData(dto);
     }
 
-    public void RemoveGroup(GroupData data, int serverIndex)
+    public void RemoveGroup(GroupData data, Guid serverUuid)
     {
-        var key = BuildKey(data, serverIndex);
+        var key = BuildKey(data, serverUuid);
         _allGroups.TryRemove(key, out _);
 
         foreach (var item in _allClientPairs.ToList())
@@ -245,9 +266,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void RemoveGroupPair(GroupPairDto dto, int serverIndex)
+    public void RemoveGroupPair(GroupPairDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (_allClientPairs.TryGetValue(key, out var pair))
         {
             pair.UserPair.Groups.Remove(dto.Group.GID);
@@ -262,9 +283,14 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void RemoveUserPair(UserDto dto, int serverIndex)
+    public void RemoveGroupUser(UserData user, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        MarkPairOffline(user, serverUuid);
+    }
+
+    public void RemoveUserPair(UserDto dto, Guid serverUuid)
+    {
+        var key = BuildKey(dto.User, serverUuid);
         if (_allClientPairs.TryGetValue(key, out var pair))
         {
             pair.UserPair.IndividualPairStatus = IndividualPairStatus.None;
@@ -279,9 +305,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void SetGroupInfo(GroupInfoDto dto, int serverIndex)
+    public void SetGroupInfo(GroupInfoDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key].Group = dto.Group;
         _allGroups[key].Owner = dto.Owner;
         _allGroups[key].GroupPermissions = dto.GroupPermissions;
@@ -289,9 +315,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void UpdatePairPermissions(UserPermissionsDto dto, int serverIndex)
+    public void UpdateGroupPairPermissions(UserPermissionsDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.TryGetValue(key, out var pair))
         {
             throw new InvalidOperationException("No such pair for " + dto);
@@ -304,7 +330,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
 
         if (pair.UserPair.OtherPermissions.IsPaused() != dto.Permissions.IsPaused())
         {
-            var message = new ServerBasedUserKey(dto.User, serverIndex);
+            var message = new ServerBasedUserKey(dto.User, serverUuid);
             Mediator.Publish(new ClearProfileDataMessage(message));
         }
 
@@ -322,9 +348,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    public void UpdateSelfPairPermissions(UserPermissionsDto dto, int serverIndex)
+    public void UpdateSelfPairPermissions(UserPermissionsDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (!_allClientPairs.TryGetValue(key, out var pair))
         {
             throw new InvalidOperationException("No such pair for " + dto);
@@ -332,7 +358,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
 
         if (pair.UserPair.OwnPermissions.IsPaused() != dto.Permissions.IsPaused())
         {
-            var message = new ServerBasedUserKey(dto.User, serverIndex);
+            var message = new ServerBasedUserKey(dto.User, serverUuid);
             Mediator.Publish(new ClearProfileDataMessage(message));
         }
 
@@ -350,46 +376,46 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         RecreateLazy();
     }
 
-    internal void ReceiveUploadStatus(UserDto dto, int serverIndex)
+    internal void ReceiveUploadStatus(UserDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (_allClientPairs.TryGetValue(key, out var existingPair) && existingPair.IsVisible)
         {
             existingPair.SetIsUploading();
         }
     }
 
-    internal void SetGroupPairStatusInfo(GroupPairUserInfoDto dto, int serverIndex)
+    internal void SetGroupPairStatusInfo(GroupPairUserInfoDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key].GroupPairUserInfos[dto.UID] = dto.GroupUserInfo;
         RecreateLazy();
     }
 
-    internal void SetGroupPermissions(GroupPermissionDto dto, int serverIndex)
+    internal void SetGroupPermissions(GroupPermissionDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key].GroupPermissions = dto.Permissions;
         RecreateLazy();
     }
 
-    internal void SetGroupStatusInfo(GroupPairUserInfoDto dto, int serverIndex)
+    internal void SetGroupStatusInfo(GroupPairUserInfoDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key].GroupUserInfo = dto.GroupUserInfo;
         RecreateLazy();
     }
 
-    internal void UpdateGroupPairPermissions(GroupPairUserPermissionDto dto, int serverIndex)
+    internal void UpdateGroupPairPermissions(GroupPairUserPermissionDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.Group, serverIndex);
+        var key = BuildKey(dto.Group, serverUuid);
         _allGroups[key].GroupUserPermissions = dto.GroupPairPermissions;
         RecreateLazy();
     }
 
-    internal void UpdateIndividualPairStatus(UserIndividualPairStatusDto dto, int serverIndex)
+    internal void UpdateGroupStatusInfo(UserIndividualPairStatusDto dto, Guid serverUuid)
     {
-        var key = BuildKey(dto.User, serverIndex);
+        var key = BuildKey(dto.User, serverUuid);
         if (_allClientPairs.TryGetValue(key, out var pair))
         {
             pair.UserPair.IndividualPairStatus = dto.IndividualPairStatus;
@@ -420,9 +446,9 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
     private Lazy<List<Pair>> DirectPairsLazy() => new(() => _allClientPairs.Select(k => k.Value)
         .Where(k => k.IndividualPairStatus != IndividualPairStatus.None).ToList());
 
-    private void DisposePairs(int? serverIndex)
+    private void DisposePairs(Guid? serverUuid)
     {
-        if (serverIndex == null)
+        if (serverUuid == null)
         {
             Logger.LogDebug("Disposing all Pairs");
             Parallel.ForEach(_allClientPairs, item =>
@@ -432,11 +458,11 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         }
         else
         {
-            Logger.LogDebug("Disposing all Pairs for server {ServerIndex}", serverIndex);
-            var toDispose = _allClientPairs.Where(item => item.Key.ServerIndex == serverIndex).Select(item => item.Value);
+            Logger.LogDebug("Disposing all Pairs for server {ServerUuid}", serverUuid);
+            var toDispose = _allClientPairs.Where(item => item.Key.ServerUuid == serverUuid).Select(item => item.Value);
             var toRedraw = _allClientPairs.Where(
                 item => item.Value.IsVisible &&
-                item.Key.ServerIndex != serverIndex &&
+                item.Key.ServerUuid != serverUuid &&
                 toDispose.Any(disposePair => disposePair.GetPlayerNameHash().Equals(item.Value.GetPlayerNameHash(), StringComparison.Ordinal)))
                 .DistinctBy(item => item.Value.GetPlayerNameHash())
                 .Select(item => item.Key)
@@ -461,7 +487,7 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
             Dictionary<GroupFullInfoWithServer, List<Pair>> outDict = [];
             foreach (var group in _allGroups)
             {
-                var key = new GroupFullInfoWithServer(group.Key.ServerIndex, group.Value);
+                var key = new GroupFullInfoWithServer(group.Key.ServerUuid, group.Value);
                 outDict[key] = _allClientPairs.Select(p => p.Value).Where(p =>
                     p.UserPair.Groups.Exists(g => GroupDataComparer.Instance.Equals(group.Key.GroupData, new(g)))).ToList();
             }
@@ -526,13 +552,13 @@ public sealed class PairManager : DisposableMediatorSubscriberBase
         Mediator.Publish(new RefreshUiMessage());
     }
 
-    private ServerBasedUserKey BuildKey(UserData user, int serverIndex)
+    private ServerBasedUserKey BuildKey(UserData user, Guid serverUuid)
     {
-        return new ServerBasedUserKey(user, serverIndex);
+        return new ServerBasedUserKey(user, serverUuid);
     }
 
-    private ServerBasedGroupKey BuildKey(GroupData group, int serverIndex)
+    private ServerBasedGroupKey BuildKey(GroupData group, Guid serverUuid)
     {
-        return new ServerBasedGroupKey(group, serverIndex);
+        return new ServerBasedGroupKey(group, serverUuid);
     }
 }

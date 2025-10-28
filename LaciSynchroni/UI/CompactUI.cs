@@ -55,7 +55,7 @@ public class CompactUi : WindowMediatorSubscriberBase
     private string _lastAddedUserComment = string.Empty;
     private Vector2 _lastPosition = Vector2.One;
     private Vector2 _lastSize = Vector2.One;
-    private int _secretKeyIdx = -1;
+    private Guid _secretKeyServerUuid = Guid.Empty;
     private bool _showModalForUserAddition;
     private float _transferPartHeight;
     private bool _wasOpen;
@@ -261,7 +261,7 @@ public class CompactUi : WindowMediatorSubscriberBase
                 ImGui.InputTextWithHint("##noteforuser", $"Note for {_lastAddedUser.UserData.AliasOrUID}", ref _lastAddedUserComment, 100);
                 if (_uiSharedService.IconTextButton(FontAwesomeIcon.Save, "Save Note"))
                 {
-                    _serverConfigManager.SetNoteForUid(_lastAddedUser.ServerIndex, _lastAddedUser.UserData.UID, _lastAddedUserComment);
+                    _serverConfigManager.SetNoteForUid(_lastAddedUser.ServerUuid, _lastAddedUser.UserData.UID, _lastAddedUserComment);
                     _lastAddedUser = null;
                     _lastAddedUserComment = string.Empty;
                     _showModalForUserAddition = false;
@@ -313,7 +313,7 @@ public class CompactUi : WindowMediatorSubscriberBase
     {
         Vector2 rectMin;
 
-        if (_apiController.ConnectedServerIndexes.Length > 1)
+        if (_apiController.ConnectedServerUuids.Length > 1)
         {
             rectMin = new Vector2(ImGui.GetWindowContentRegionMin().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
             using (_uiSharedService.UidFont.Push())
@@ -326,7 +326,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
         else
         {
-            using (ImRaii.PushId("singleserveruid")) DrawUIDHeader(_apiController.ConnectedServerIndexes.FirstOrDefault());
+            using (ImRaii.PushId("singleserveruid")) DrawUIDHeader(_apiController.ConnectedServerUuids.FirstOrDefault());
             ImGui.Separator();
             rectMin = new Vector2(ImGui.GetWindowContentRegionMin().X, ImGui.GetCursorPosY()) + ImGui.GetWindowPos();
         }
@@ -361,7 +361,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         DrawServerStatusTooltipAndToggle(rectMin, rectMax);
     }
 
-    private void DrawUIDHeader(int serverId)
+    private void DrawUIDHeader(Guid serverId)
     {
         var uidText = GetUidTextMultiServer(serverId);
         var uidColor = GetUidColorByServer(serverId);
@@ -480,9 +480,9 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
     }
 
-    private void DrawServerName(int serverId, string serverName, string serverUri)
+    private void DrawServerName(Guid serverId, string serverName, string serverUri)
     {
-        if (_apiController.ConnectedServerIndexes.Any(p => p == serverId))
+        if (_apiController.ConnectedServerUuids.Any(p => p == serverId))
         {
             ImGui.TextColored(ImGuiColors.ParsedGreen, serverName);
         }
@@ -493,7 +493,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             UiSharedService.AttachToolTip(serverUri);
     }
 
-    private void DrawMultiServerUID(int serverId)
+    private void DrawMultiServerUID(Guid serverId)
     {
         var status = _apiController.GetServerState(serverId);
         var statusColor = GetUidColorByState(status);
@@ -544,7 +544,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         }
     }
 
-    private void DrawMultiServerConnectButton(int serverId, string serverName)
+    private void DrawMultiServerConnectButton(Guid serverId, string serverName)
     {
         bool isConnectingOrConnected = _apiController.IsServerConnected(serverId);
         var color = UiSharedService.GetBoolColor(!isConnectingOrConnected);
@@ -557,13 +557,13 @@ public class CompactUi : WindowMediatorSubscriberBase
             {
                 if (_apiController.IsServerConnected(serverId))
                 {
-                    _serverConfigManager.GetServerByIndex(serverId).FullPause = true;
+                    _serverConfigManager.GetServerByUuid(serverId).FullPause = true;
                     _serverConfigManager.Save();
                     _ = _apiController.PauseConnectionAsync(serverId);
                 }
                 else
                 {
-                    _serverConfigManager.GetServerByIndex(serverId).FullPause = false;
+                    _serverConfigManager.GetServerByUuid(serverId).FullPause = false;
                     _serverConfigManager.Save();
                     _ = _apiController.CreateConnectionsAsync(serverId);
                 }
@@ -575,7 +575,7 @@ public class CompactUi : WindowMediatorSubscriberBase
            "Connect to " + serverName);
     }
 
-    private void DrawOnlineUsers(int serverId)
+    private void DrawOnlineUsers(Guid serverId)
     {
         if (_apiController.IsServerConnected(serverId))
             ImGui.TextColored(ImGuiColors.ParsedGreen, _apiController.GetOnlineUsersForServer(serverId).ToString(CultureInfo.InvariantCulture));
@@ -583,7 +583,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             ImGui.TextColored(ImGuiColors.DalamudRed, string.Empty);
     }
 
-    private void DrawVisiblePairs(int serverId)
+    private void DrawVisiblePairs(Guid serverId)
     {
         if (_apiController.IsServerConnected(serverId))
             ImGui.TextColored(ImGuiColors.ParsedGreen, _pairManager.GetVisibleUserCount(serverId).ToString(CultureInfo.InvariantCulture));
@@ -591,7 +591,7 @@ public class CompactUi : WindowMediatorSubscriberBase
             ImGui.TextColored(ImGuiColors.DalamudRed, string.Empty);
     }
 
-    private string GetUidTextMultiServer(int serverId)
+    private string GetUidTextMultiServer(Guid serverId)
     {
         return _apiController.GetServerState(serverId) switch
         {
@@ -801,12 +801,12 @@ public class CompactUi : WindowMediatorSubscriberBase
         bool FilterVisibleUsers(KeyValuePair<Pair, List<GroupFullInfoDto>> u)
             => u.Key.IsVisible
                 && (_configService.Current.ShowSyncshellUsersInVisible || !(!_configService.Current.ShowSyncshellUsersInVisible && !u.Key.IsDirectlyPaired));
-        bool FilterTagusers(KeyValuePair<Pair, List<GroupFullInfoDto>> u, string tag, int serverIndex)
-            => u.Key.IsDirectlyPaired && !u.Key.IsOneSidedPair && _tagHandler.HasTag(serverIndex, u.Key.UserData.UID, tag);
+        bool FilterTagusers(KeyValuePair<Pair, List<GroupFullInfoDto>> u, string tag, Guid serverUuid)
+            => u.Key.IsDirectlyPaired && !u.Key.IsOneSidedPair && _tagHandler.HasTag(serverUuid, u.Key.UserData.UID, tag);
         bool FilterGroupUsers(KeyValuePair<Pair, List<GroupFullInfoDto>> u, GroupFullInfoDto group)
             => u.Value.Exists(g => string.Equals(g.GID, group.GID, StringComparison.Ordinal));
         bool FilterNotTaggedUsers(KeyValuePair<Pair, List<GroupFullInfoDto>> u)
-            => u.Key.IsDirectlyPaired && !u.Key.IsOneSidedPair && !_tagHandler.HasAnyTag(u.Key.ServerIndex, u.Key.UserData.UID);
+            => u.Key.IsDirectlyPaired && !u.Key.IsOneSidedPair && !_tagHandler.HasAnyTag(u.Key.ServerUuid, u.Key.UserData.UID);
         bool FilterOfflineUsers(KeyValuePair<Pair, List<GroupFullInfoDto>> u)
             => ((u.Key.IsDirectlyPaired && _configService.Current.ShowSyncshellOfflineUsersSeparately)
                 || !_configService.Current.ShowSyncshellOfflineUsersSeparately)
@@ -858,9 +858,9 @@ public class CompactUi : WindowMediatorSubscriberBase
         foreach (var tag in tags)
         {
             var allTagPairs = ImmutablePairList(allPairs
-                .Where(u => FilterTagusers(u, tag.Tag, tag.ServerIndex)));
+                .Where(u => FilterTagusers(u, tag.Tag, tag.ServerUuid)));
             var filteredTagPairs = BasicSortedDictionary(filteredPairs
-                .Where(u => FilterTagusers(u, tag.Tag, tag.ServerIndex) && FilterOnlineOrPausedSelf(u)));
+                .Where(u => FilterTagusers(u, tag.Tag, tag.ServerUuid) && FilterOnlineOrPausedSelf(u)));
 
             drawFolders.Add(_drawEntityFactory.CreateDrawTagFolder(tag, filteredTagPairs, allTagPairs));
         }
@@ -901,7 +901,7 @@ public class CompactUi : WindowMediatorSubscriberBase
     }
 
 
-    private string GetServerErrorByServer(int serverId)
+    private string GetServerErrorByServer(Guid serverId)
     {
         var authFailureMessage = _apiController.GetAuthFailureMessageByServer(serverId);
         return GetServerErrorByState(_apiController.GetServerState(serverId), authFailureMessage);
@@ -931,7 +931,7 @@ public class CompactUi : WindowMediatorSubscriberBase
         };
     }
 
-    private Vector4 GetUidColorByServer(int serverId)
+    private Vector4 GetUidColorByServer(Guid serverId)
     {
         return GetUidColorByState(_apiController.GetServerState(serverId));
     }

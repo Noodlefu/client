@@ -17,7 +17,7 @@ public class SelectPairForTagUi
     private HashSet<string> _peopleInGroup = new(StringComparer.Ordinal);
     private bool _show = false;
     private string _tag = string.Empty;
-    private int _serverIndex = -1;
+    private Guid _serverUuid = Guid.Empty;
 
     public SelectPairForTagUi(TagHandler tagHandler, IdDisplayHandler uidDisplayHandler, ServerConfigurationManager serverConfigurationManager)
     {
@@ -50,7 +50,7 @@ public class SelectPairForTagUi
         ImGui.SetNextWindowSizeConstraints(minSize, maxSize);
         if (ImGui.BeginPopupModal(popupName, ref _show, ImGuiWindowFlags.Popup | ImGuiWindowFlags.Modal))
         {
-            var serverName = _serverConfigurationManager.GetServerNameByIndex(_serverIndex);
+            var serverName = _serverConfigurationManager.GetServerByUuid(_serverUuid).ServerName;
             ImGui.TextUnformatted($"Select users for group {_tag} on server {serverName}");
 
             ImGui.InputTextWithHint("##filter", "Filter", ref _filter, 255, ImGuiInputTextFlags.None);
@@ -64,12 +64,12 @@ public class SelectPairForTagUi
                 {
                     if (isInGroup)
                     {
-                        _tagHandler.AddTagToPairedUid(_serverIndex, item.UserData.UID, _tag);
+                        _tagHandler.AddTagToPairedUid(_serverUuid, item.UserData.UID, _tag);
                         _peopleInGroup.Add(item.UserData.UID);
                     }
                     else
                     {
-                        _tagHandler.RemoveTagFromPairedUid(_serverIndex, item.UserData.UID, _tag);
+                        _tagHandler.RemoveTagFromPairedUid(_serverUuid, item.UserData.UID, _tag);
                         _peopleInGroup.Remove(item.UserData.UID);
                     }
                 }
@@ -83,12 +83,12 @@ public class SelectPairForTagUi
         }
     }
 
-    public void Open(int serverIndex, string tag)
+    public void Open(Guid serverUuid, string tag)
     {
-        _peopleInGroup = _tagHandler.GetOtherUidsForTag(serverIndex, tag);
+        _peopleInGroup = _tagHandler.GetOtherUidsForTag(serverUuid, tag);
         _tag = tag;
         _show = true;
-        _serverIndex = serverIndex;
+        _serverUuid = serverUuid;
     }
 
     private string PairName(Pair pair)
@@ -98,7 +98,7 @@ public class SelectPairForTagUi
 
     private bool IsRelevant(Pair pair)
     {
-        if (pair.ServerIndex != _serverIndex)
+        if (pair.ServerUuid != _serverUuid)
         {
             // Different server => can't show
             return false;

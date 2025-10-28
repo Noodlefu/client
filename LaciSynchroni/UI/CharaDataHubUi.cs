@@ -54,7 +54,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
     private bool _openMcdOnlineOnNextRun = false;
     private bool _readExport;
     private string _selectedDtoId = string.Empty;
-    private int _selectedServerIndex = 0;
+    private Guid _selectedServerUuid;
     private string SelectedDtoId
     {
         get => _selectedDtoId;
@@ -113,11 +113,12 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             MinimumSize = new Vector2(600, 400),
             MaximumSize = new Vector2(1200, 2000),
         };
-        _serverSelector = new ServerSelectorSmall(index =>
+        _serverSelector = new ServerSelectorSmall(serverUuid =>
         {
-            _selectedServerIndex = index;
-            _ = _charaDataManager.SelectServer(_selectedServerIndex, _disposalCts.Token);
-        }, _apiController.ConnectedServerIndexes.FirstOrDefault());
+            _selectedServerUuid = serverUuid;
+            _charaDataManager.SelectServer(serverUuid, CancellationToken.None);
+        });
+        _selectedServerUuid = _apiController.ConnectedServerUuids.FirstOrDefault();
     }
 
     private bool _openDataApplicationShared = false;
@@ -193,7 +194,14 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
         }
 
         var availableWidth = ImGui.GetWindowContentRegionMax().X;
-        _serverSelector.Draw(_serverConfigurationManager.GetServerNames(), _apiController.ConnectedServerIndexes, availableWidth);
+        var connectedServers = _apiController.ConnectedServerUuids;
+        _serverSelector.Draw(_serverConfigurationManager.GetServerInfo(), connectedServers, availableWidth);
+
+        if (!connectedServers.Contains(_selectedServerUuid))
+        {
+            UiSharedService.ColorTextWrapped("Connect to a server to manage character data.", ImGuiColors.DalamudYellow);
+            return;
+        }
 
         using var disabled = ImRaii.Disabled(_disableUI);
 
@@ -490,7 +498,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                                 {
                                     if (_uiSharedService.IconButton(FontAwesomeIcon.ArrowRight))
                                     {
-                                        _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerIndex, metaInfo!);
+                                        _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerUuid, metaInfo!);
                                     }
                                 }, "Apply Character Data to GPose Target", metaInfo, _hasValidGposeTarget, false);
                                 ImGui.SameLine();
@@ -498,7 +506,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                                 {
                                     if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
                                     {
-                                        _ = _charaDataManager.SpawnAndApplyData(_selectedServerIndex, meta!);
+                                        _ = _charaDataManager.SpawnAndApplyData(_selectedServerUuid, meta!);
                                     }
                                 }, "Spawn Actor with Brio and apply Character Data", metaInfo, _hasValidGposeTarget, true);
 
@@ -513,7 +521,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                                     uidText = uid;
                                 }
 
-                                var note = _serverConfigurationManager.GetNoteForUid(_selectedServerIndex, uid);
+                                var note = _serverConfigurationManager.GetNoteForUid(_selectedServerUuid, uid);
                                 if (note != null)
                                 {
                                     uidText = $"{note} ({uidText})";
@@ -572,7 +580,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                         {
                             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowRight, $"Download and Apply"))
                             {
-                                _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerIndex, meta!);
+                                _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerUuid, meta!);
                             }
                         }, "Apply this Character Data to the current GPose actor", _charaDataManager.LastDownloadedMetaInfo, _hasValidGposeTarget, false);
                         ImGui.SameLine();
@@ -580,7 +588,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                         {
                             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, $"Download and Spawn"))
                             {
-                                _ = _charaDataManager.SpawnAndApplyData(_selectedServerIndex, meta!);
+                                _ = _charaDataManager.SpawnAndApplyData(_selectedServerUuid, meta!);
                             }
                         }, "Spawn a new Brio actor and apply this Character Data", _charaDataManager.LastDownloadedMetaInfo, _hasValidGposeTarget, true);
                         ImGui.SameLine();
@@ -702,7 +710,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
                             _filteredDict = _charaDataManager.SharedWithYouData
                                 .ToDictionary(k =>
                                 {
-                                    var note = _serverConfigurationManager.GetNoteForUid(_selectedServerIndex, k.Key.UID);
+                                    var note = _serverConfigurationManager.GetNoteForUid(_selectedServerUuid, k.Key.UID);
                                     if (note == null) return k.Key.AliasOrUID;
                                     return $"{note} ({k.Key.AliasOrUID})";
                                 }, k => k.Value, StringComparer.OrdinalIgnoreCase)
@@ -896,7 +904,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             {
                 if (_uiSharedService.IconButton(FontAwesomeIcon.ArrowRight))
                 {
-                    _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerIndex, meta!);
+                    _ = _charaDataManager.ApplyCharaDataToGposeTarget(_selectedServerUuid, meta!);
                 }
             }, $"Apply Character data to {CharaName(selectedGposeActor)}", data, hasValidGposeTarget, false);
             ImGui.SameLine();
@@ -904,7 +912,7 @@ internal sealed partial class CharaDataHubUi : WindowMediatorSubscriberBase
             {
                 if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
                 {
-                    _ = _charaDataManager.SpawnAndApplyData(_selectedServerIndex, meta!);
+                    _ = _charaDataManager.SpawnAndApplyData(_selectedServerUuid, meta!);
                 }
             }, "Spawn and Apply Character data", data, hasValidGposeTarget, true);
 

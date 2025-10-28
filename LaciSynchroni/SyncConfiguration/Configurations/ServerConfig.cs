@@ -1,4 +1,6 @@
-﻿using LaciSynchroni.SyncConfiguration.Models;
+﻿using System;
+using System.Text.Json.Serialization;
+using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.WebAPI;
 
 namespace LaciSynchroni.SyncConfiguration.Configurations;
@@ -6,7 +8,12 @@ namespace LaciSynchroni.SyncConfiguration.Configurations;
 [Serializable]
 public class ServerConfig : ISyncConfiguration
 {
-    public int CurrentServer { get; set; } = 0;
+    [Obsolete("Use SelectedServerUuid")]
+    [JsonPropertyName("CurrentServer")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LegacyCurrentServerIndex { get; set; } = 0;
+
+    public Guid SelectedServerUuid { get; set; } = Guid.Empty;
 
     public List<ServerStorage> ServerStorage { get; set; } = new()
     {
@@ -18,5 +25,5 @@ public class ServerConfig : ISyncConfiguration
     public bool ShowServerPickerInMainMenu { get; set; } = false;
     public bool EnableMultiConnect { get; set; } = true;
 
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
 }

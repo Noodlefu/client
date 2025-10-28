@@ -21,9 +21,9 @@ internal partial class CharaDataHubUi
                         + "You can apply Shared World Poses to yourself or spawn the associated character to pose with them." + Environment.NewLine + Environment.NewLine
                         + "You can adjust the filter and change further settings in the 'Settings & Filter' foldout.");
 
-        if (!_apiController.ConnectedServerIndexes.Any(p => p == _selectedServerIndex))
+        if (!_apiController.ConnectedServerUuids.Any(p => p == _selectedServerUuid))
         {
-            _selectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
+            _selectedServerUuid = _apiController.ConnectedServerUuids.FirstOrDefault();
         }
 
         UiSharedService.DrawTree("Settings & Filters", () =>
@@ -112,7 +112,7 @@ internal partial class CharaDataHubUi
 
             UiSharedService.DrawGrouped(() =>
             {
-                string? userNote = _serverConfigurationManager.GetNoteForUid(_selectedServerIndex, pose.Key.MetaInfo.Uploader.UID);
+                string? userNote = _serverConfigurationManager.GetNoteForUid(_selectedServerUuid, pose.Key.MetaInfo.Uploader.UID);
                 var noteText = pose.Key.MetaInfo.IsOwnData ? "YOU" : (userNote == null ? pose.Key.MetaInfo.Uploader.AliasOrUID : $"{userNote} ({pose.Key.MetaInfo.Uploader.AliasOrUID})");
                 ImGui.TextUnformatted("Pose by");
                 ImGui.SameLine();
@@ -154,7 +154,7 @@ internal partial class CharaDataHubUi
                     {
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "Spawn and Pose"))
                         {
-                            _charaDataManager.SpawnAndApplyWorldTransform(_selectedServerIndex, pose.Key.MetaInfo, pose.Key);
+                            _charaDataManager.SpawnAndApplyWorldTransform(_selectedServerUuid, pose.Key.MetaInfo, pose.Key);
                         }
                     }, "Spawn actor and apply pose and position", pose.Key.MetaInfo, _hasValidGposeTarget, true);
                 }

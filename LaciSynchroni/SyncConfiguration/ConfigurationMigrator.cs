@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.WebAPI;
+﻿using System;
+using LaciSynchroni.WebAPI;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -19,15 +20,46 @@ public class ConfigurationMigrator(ILogger<ConfigurationMigrator> logger, Transi
             transientConfigService.Save();
         }
 
-        if (serverConfigService.Current.Version == 1)
+        var serverConfig = serverConfigService.Current;
+
+        if (serverConfig.Version == 1)
         {
             _logger.LogInformation("Migrating Server Config V1 => V2");
-            var centralServer = serverConfigService.Current.ServerStorage.Find(f => f.ServerName.Equals("Lunae Crescere Incipientis (Central Server EU)", StringComparison.Ordinal));
+            var centralServer = serverConfig.ServerStorage.Find(f => f.ServerName.Equals("Lunae Crescere Incipientis (Central Server EU)", StringComparison.Ordinal));
             if (centralServer != null)
             {
                 centralServer.ServerName = ApiController.MainServer;
             }
-            serverConfigService.Current.Version = 2;
+            serverConfig.Version = 2;
+            serverConfigService.Save();
+        }
+
+        if (serverConfig.Version == 2)
+        {
+            _logger.LogInformation("Migrating Server Config V2 => V3");
+
+            foreach (var server in serverConfig.ServerStorage)
+            {
+                if (server.ServerUuid == Guid.Empty)
+                {
+                    server.ServerUuid = Guid.NewGuid();
+                }
+            }
+
+            if (serverConfig.SelectedServerUuid == Guid.Empty)
+            {
+                var selectedIndex = serverConfig.LegacyCurrentServerIndex ?? 0;
+                if (selectedIndex >= 0 && selectedIndex < serverConfig.ServerStorage.Count)
+                {
+                    serverConfig.SelectedServerUuid = serverConfig.ServerStorage[selectedIndex].ServerUuid;
+                }
+                else if (serverConfig.ServerStorage.Count > 0)
+                {
+                    serverConfig.SelectedServerUuid = serverConfig.ServerStorage[0].ServerUuid;
+                }
+            }
+            serverConfig.LegacyCurrentServerIndex = null;
+            serverConfig.Version = 3;
             serverConfigService.Save();
         }
     }

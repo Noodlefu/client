@@ -45,7 +45,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
     private CancellationTokenSource _uploadCts = new();
     // We can only store data for one server. When we swap the selection, the data should be cleared
     // whenever we load data, we set this index. This way, we know which server the data belongs to.
-    private int _dataServerIndex;
+    private Guid _dataServerUuid;
 
     public CharaDataManager(ILogger<CharaDataManager> logger, ApiController apiController,
         CharaDataFileHandler charaDataFileHandler,
@@ -65,17 +65,17 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         _serverConfig = serverConfig;
         syncMediator.Subscribe<ConnectedMessage>(this, (msg) =>
         {
-            if (msg.serverIndex != _dataServerIndex)
+            if (msg.ServerUuid != _dataServerUuid)
             {
                 // Don't do anything if an unrelated server connected
                 return;
             }
             var token = _connectCts.Token;
-            _ = SelectServer(msg.serverIndex, token, _configService.Current.DownloadMcdDataOnConnection);
+            _ = SelectServer(msg.ServerUuid, token, _configService.Current.DownloadMcdDataOnConnection);
         });
         syncMediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            if (msg.ServerIndex != _dataServerIndex)
+            if (msg.ServerUuid != _dataServerUuid)
             {
                 // Don't do anything if an unrelated server connected
                 return;
@@ -112,7 +112,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
     public Task<(string Output, bool Success)>? UploadTask { get; set; }
     public bool BrioAvailable => _ipcManager.Brio.APIAvailable;
 
-    public Task ApplyCharaData(int serverIndex, CharaDataDownloadDto dataDownloadDto, string charaName)
+    public Task ApplyCharaData(Guid serverUuid, CharaDataDownloadDto dataDownloadDto, string charaName)
     {
         return UiBlockingComputation = DataApplicationTask = Task.Run(async () =>
         {
@@ -125,28 +125,28 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
                 UpdatedDate = dataDownloadDto.UpdatedDate,
             };
 
-            await DownloadAndAplyDataAsync(serverIndex, charaName, dataDownloadDto, metaInfo, false).ConfigureAwait(false);
+            await DownloadAndAplyDataAsync(serverUuid, charaName, dataDownloadDto, metaInfo, false).ConfigureAwait(false);
         });
     }
 
-    public Task ApplyCharaData(int serverIndex, CharaDataMetaInfoDto dataMetaInfoDto, string charaName)
+    public Task ApplyCharaData(Guid serverUuid, CharaDataMetaInfoDto dataMetaInfoDto, string charaName)
     {
         return UiBlockingComputation = DataApplicationTask = Task.Run(async () =>
         {
             if (string.IsNullOrEmpty(charaName)) return;
 
-            var download = await _apiController.CharaDataDownload(serverIndex, dataMetaInfoDto.Uploader.UID + ":" + dataMetaInfoDto.Id).ConfigureAwait(false);
+            var download = await _apiController.CharaDataDownload(serverUuid, dataMetaInfoDto.Uploader.UID + ":" + dataMetaInfoDto.Id).ConfigureAwait(false);
             if (download == null)
             {
                 DataApplicationTask = null;
                 return;
             }
 
-            await DownloadAndAplyDataAsync(serverIndex, charaName, download, dataMetaInfoDto, false).ConfigureAwait(false);
+            await DownloadAndAplyDataAsync(serverUuid, charaName, download, dataMetaInfoDto, false).ConfigureAwait(false);
         });
     }
 
-    public Task ApplyCharaDataToGposeTarget(int serverIndex, CharaDataMetaInfoDto dataMetaInfoDto)
+    public Task ApplyCharaDataToGposeTarget(Guid serverUuid, CharaDataMetaInfoDto dataMetaInfoDto)
     {
         return UiBlockingComputation = DataApplicationTask = Task.Run(async () =>
         {
@@ -154,11 +154,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             var charaName = obj?.Name.TextValue ?? string.Empty;
             if (string.IsNullOrEmpty(charaName)) return;
 
-            await ApplyCharaData(serverIndex, dataMetaInfoDto, charaName).ConfigureAwait(false);
+            await ApplyCharaData(serverUuid, dataMetaInfoDto, charaName).ConfigureAwait(false);
         });
     }
 
-    public async Task ApplyOwnDataToGposeTarget(int serverIndex, CharaDataFullExtendedDto dataDto)
+    public async Task ApplyOwnDataToGposeTarget(Guid serverUuid, CharaDataFullExtendedDto dataDto)
     {
         var chara = await _dalamudUtilService.GetGposeTargetGameObjectAsync().ConfigureAwait(false);
         var charaName = chara?.Name.TextValue ?? string.Empty;
@@ -181,7 +181,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             UpdatedDate = dataDto.UpdatedDate,
         };
 
-        UiBlockingComputation = DataApplicationTask = DownloadAndAplyDataAsync(serverIndex, charaName, downloadDto, metaInfoDto, false);
+        UiBlockingComputation = DataApplicationTask = DownloadAndAplyDataAsync(serverUuid, charaName, downloadDto, metaInfoDto, false);
     }
 
     public Task ApplyPoseData(PoseEntry pose, string targetName)
@@ -294,11 +294,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         _uploadCts.Cancel();
     }
 
-    public void CreateCharaDataEntry(int serverIndex, CancellationToken cancelToken)
+    public void CreateCharaDataEntry(Guid serverUuid, CancellationToken cancelToken)
     {
         UiBlockingComputation = DataCreationTask = Task.Run(async () =>
         {
-            var result = await _apiController.CharaDataCreate(serverIndex).ConfigureAwait(false);
+            var result = await _apiController.CharaDataCreate(serverUuid).ConfigureAwait(false);
             _ = Task.Run(async () =>
             {
                 _charaDataCreateCts = _charaDataCreateCts.CancelRecreate();
@@ -317,9 +317,9 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         });
     }
 
-    public async Task DeleteCharaData(int serverIndex, CharaDataFullExtendedDto dto)
+    public async Task DeleteCharaData(Guid serverUuid, CharaDataFullExtendedDto dto)
     {
-        var ret = await _apiController.CharaDataDelete(serverIndex, dto.Id).ConfigureAwait(false);
+        var ret = await _apiController.CharaDataDelete(serverUuid, dto.Id).ConfigureAwait(false);
         if (ret)
         {
             _ownCharaData.Remove(dto.Id);
@@ -338,7 +338,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
                 {
                     LastDownloadedMetaInfo = null;
                 }
-                var metaInfo = await _apiController.CharaDataGetMetainfo(_dataServerIndex, importCode).ConfigureAwait(false);
+                var metaInfo = await _apiController.CharaDataGetMetainfo(_dataServerUuid, importCode).ConfigureAwait(false);
                 _sharedMetaInfoTimeoutTasks[importCode] = Task.Delay(TimeSpan.FromSeconds(10));
                 if (metaInfo == null)
                 {
@@ -360,10 +360,10 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         });
     }
 
-    public async Task SelectServer(int serverIndex, CancellationToken cancellation, bool downloadData = true)
+    public async Task SelectServer(Guid serverUuid, CancellationToken cancellation, bool downloadData = true)
     {
-        Logger.LogInformation("Swapping selected server for Chara Data Manager to {ServerIndex}", serverIndex);
-        _dataServerIndex = serverIndex;
+        Logger.LogInformation("Swapping selected server for Chara Data Manager to {ServerUuid}", serverUuid);
+        _dataServerUuid = serverUuid;
         await _connectCts.CancelAsync().ConfigureAwait(false);
         _connectCts.Dispose();
         _connectCts = new();
@@ -372,7 +372,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         _sharedWithYouData.Clear();
         _updateDtos.Clear();
         Initialized = false;
-        var connectionDto = _apiController.GetConnectionDto(serverIndex);
+        var connectionDto = _apiController.GetConnectionDto(serverUuid);
         if (connectionDto != null)
         {
             MaxCreatableCharaData = string.IsNullOrEmpty(connectionDto.User.Alias)
@@ -397,7 +397,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         UiBlockingComputation = GetAllDataTask = Task.Run(async () =>
         {
             _getAllDataCts = _getAllDataCts.CancelRecreate();
-            var result = await _apiController.CharaDataGetOwn(_dataServerIndex).ConfigureAwait(false);
+            var result = await _apiController.CharaDataGetOwn(_dataServerUuid).ConfigureAwait(false);
 
             Initialized = true;
 
@@ -434,7 +434,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
     {
         Logger.LogDebug("Getting Shared with You Data");
 
-        UiBlockingComputation = GetSharedWithYouTask = _apiController.CharaDataGetShared(_dataServerIndex);
+        UiBlockingComputation = GetSharedWithYouTask = _apiController.CharaDataGetShared(_dataServerUuid);
         _sharedWithYouData.Clear();
 
         GetSharedWithYouTimeoutTask = Task.Run(async () =>
@@ -453,7 +453,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         var result = await GetSharedWithYouTask.ConfigureAwait(false);
         foreach (var grouping in result.GroupBy(r => r.Uploader))
         {
-            var pair = _pairManager.GetPairByUID(_dataServerIndex, grouping.Key.UID);
+            var pair = _pairManager.GetPairByUID(_dataServerUuid, grouping.Key.UID);
             if (pair?.IsPaused ?? false) continue;
             List<CharaDataMetaInfoExtendedDto> newList = new();
             foreach (var item in grouping)
@@ -568,7 +568,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         });
     }
 
-    public Task<HandledCharaDataEntry?> SpawnAndApplyData(int serverIndex, CharaDataDownloadDto charaDataDownloadDto)
+    public Task<HandledCharaDataEntry?> SpawnAndApplyData(Guid serverUuid, CharaDataDownloadDto charaDataDownloadDto)
     {
         var task = Task.Run(async () =>
         {
@@ -576,7 +576,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             if (newActor == null) return null;
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
 
-            await ApplyCharaData(serverIndex, charaDataDownloadDto, newActor.Name.TextValue).ConfigureAwait(false);
+            await ApplyCharaData(serverUuid, charaDataDownloadDto, newActor.Name.TextValue).ConfigureAwait(false);
 
             return _characterHandler.HandledCharaData.FirstOrDefault(f => string.Equals(f.Name, newActor.Name.TextValue, StringComparison.Ordinal));
         });
@@ -584,7 +584,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         return task;
     }
 
-    public Task<HandledCharaDataEntry?> SpawnAndApplyData(int serverIndex, CharaDataMetaInfoDto charaDataMetaInfoDto)
+    public Task<HandledCharaDataEntry?> SpawnAndApplyData(Guid serverUuid, CharaDataMetaInfoDto charaDataMetaInfoDto)
     {
         var task = Task.Run(async () =>
         {
@@ -592,7 +592,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             if (newActor == null) return null;
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
 
-            await ApplyCharaData(serverIndex, charaDataMetaInfoDto, newActor.Name.TextValue).ConfigureAwait(false);
+            await ApplyCharaData(serverUuid, charaDataMetaInfoDto, newActor.Name.TextValue).ConfigureAwait(false);
 
             return _characterHandler.HandledCharaData.FirstOrDefault(f => string.Equals(f.Name, newActor.Name.TextValue, StringComparison.Ordinal));
         });
@@ -646,37 +646,37 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         return _metaInfoCache.TryGetValue(key, out metaInfo);
     }
 
-    public void UploadAllCharaData(int serverIndex)
+    public void UploadAllCharaData(Guid serverUuid)
     {
         UiBlockingComputation = Task.Run(async () =>
         {
             foreach (var updateDto in _updateDtos.Values.Where(u => u.HasChanges))
             {
-                CharaUpdateTask = CharaUpdateAsync(serverIndex, updateDto);
+                CharaUpdateTask = CharaUpdateAsync(serverUuid, updateDto);
                 await CharaUpdateTask.ConfigureAwait(false);
             }
         });
     }
 
-    public void UploadCharaData(int serverIndex, string id)
+    public void UploadCharaData(Guid serverUuid, string id)
     {
         var hasUpdateDto = _updateDtos.TryGetValue(id, out var updateDto);
         if (!hasUpdateDto || updateDto == null) return;
 
-        UiBlockingComputation = CharaUpdateTask = CharaUpdateAsync(serverIndex, updateDto);
+        UiBlockingComputation = CharaUpdateTask = CharaUpdateAsync(serverUuid, updateDto);
     }
 
-    public void UploadMissingFiles(int serverIndex, string id)
+    public void UploadMissingFiles(Guid serverUuid, string id)
     {
         var hasDto = _ownCharaData.TryGetValue(id, out var dto);
         if (!hasDto || dto == null) return;
 
-        UiBlockingComputation = UploadTask = RestoreThenUpload(serverIndex, dto);
+        UiBlockingComputation = UploadTask = RestoreThenUpload(serverUuid, dto);
     }
 
-    private async Task<(string Output, bool Success)> RestoreThenUpload(int serverIndex, CharaDataFullExtendedDto dto)
+    private async Task<(string Output, bool Success)> RestoreThenUpload(Guid serverUuid, CharaDataFullExtendedDto dto)
     {
-        var newDto = await _apiController.CharaDataAttemptRestore(serverIndex, dto.Id).ConfigureAwait(false);
+        var newDto = await _apiController.CharaDataAttemptRestore(serverUuid, dto.Id).ConfigureAwait(false);
         if (newDto == null)
         {
             _ownCharaData.Remove(dto.Id);
@@ -695,7 +695,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         }
 
         var missingFileList = extendedDto!.MissingFiles.ToList();
-        var result = await UploadFiles(serverIndex, missingFileList, async () =>
+        var result = await UploadFiles(serverUuid, missingFileList, async () =>
         {
             var newFilePaths = dto.FileGamePaths;
             foreach (var missing in missingFileList)
@@ -706,7 +706,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             {
                 FileGamePaths = newFilePaths
             };
-            var res = await _apiController.CharaDataUpdate(serverIndex, updateDto).ConfigureAwait(false);
+            var res = await _apiController.CharaDataUpdate(serverUuid, updateDto).ConfigureAwait(false);
             await AddOrUpdateDto(res).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
@@ -714,7 +714,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         return result;
     }
 
-    internal void ApplyDataToSelf(int serverIndex, CharaDataFullExtendedDto dataDto)
+    internal void ApplyDataToSelf(Guid serverUuid, CharaDataFullExtendedDto dataDto)
     {
         var chara = _dalamudUtilService.GetPlayerName();
         CharaDataDownloadDto downloadDto = new(dataDto.Id, dataDto.Uploader)
@@ -736,7 +736,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             UpdatedDate = dataDto.UpdatedDate,
         };
 
-        UiBlockingComputation = DataApplicationTask = DownloadAndAplyDataAsync(serverIndex, chara, downloadDto, metaInfoDto);
+        UiBlockingComputation = DataApplicationTask = DownloadAndAplyDataAsync(serverUuid, chara, downloadDto, metaInfoDto);
     }
 
     internal void AttachPoseData(PoseEntry pose, CharaDataExtendedUpdateDto updateDto)
@@ -797,11 +797,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         });
     }
 
-    internal void SpawnAndApplyWorldTransform(int serverIndex, CharaDataMetaInfoDto metaInfo, PoseEntry value)
+    internal void SpawnAndApplyWorldTransform(Guid serverUuid, CharaDataMetaInfoDto metaInfo, PoseEntry value)
     {
         UiBlockingComputation = Task.Run(async () =>
         {
-            var actor = await SpawnAndApplyData(serverIndex, metaInfo).ConfigureAwait(false);
+            var actor = await SpawnAndApplyData(serverUuid, metaInfo).ConfigureAwait(false);
             if (actor == null) return;
             await ApplyPoseData(value, actor.Name).ConfigureAwait(false);
             await ApplyWorldDataToTarget(value, actor.Name).ConfigureAwait(false);
@@ -934,7 +934,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         }
     }
 
-    private async Task CharaUpdateAsync(int serverIndex, CharaDataExtendedUpdateDto updateDto)
+    private async Task CharaUpdateAsync(Guid serverUuid, CharaDataExtendedUpdateDto updateDto)
     {
         Logger.LogDebug("Uploading Chara Data to Server");
         var baseUpdateDto = updateDto.BaseDto;
@@ -942,7 +942,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
         {
             Logger.LogDebug("Detected file path changes, starting file upload");
 
-            UploadTask = UploadFiles(serverIndex, baseUpdateDto.FileGamePaths);
+            UploadTask = UploadFiles(serverUuid, baseUpdateDto.FileGamePaths);
             var result = await UploadTask.ConfigureAwait(false);
             if (!result.Success)
             {
@@ -952,11 +952,11 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
 
         Logger.LogDebug("Pushing update dto to server: {data}", baseUpdateDto);
 
-        var res = await _apiController.CharaDataUpdate(serverIndex, baseUpdateDto).ConfigureAwait(false);
+        var res = await _apiController.CharaDataUpdate(serverUuid, baseUpdateDto).ConfigureAwait(false);
         await AddOrUpdateDto(res).ConfigureAwait(false);
     }
 
-    private async Task DownloadAndAplyDataAsync(int serverIndex, string charaName, CharaDataDownloadDto charaDataDownloadDto, CharaDataMetaInfoDto metaInfo, bool autoRevert = true)
+    private async Task DownloadAndAplyDataAsync(Guid serverUuid, string charaName, CharaDataDownloadDto charaDataDownloadDto, CharaDataMetaInfoDto metaInfo, bool autoRevert = true)
     {
         _applicationCts = _applicationCts.CancelRecreate();
         var token = _applicationCts.Token;
@@ -988,7 +988,7 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             try
             {
                 DataApplicationProgress = "Downloading Missing Files. Please be patient.";
-                await _fileHandler.DownloadFilesAsync(serverIndex, tempHandler, missingFiles, modPaths, token).ConfigureAwait(false);
+                await _fileHandler.DownloadFilesAsync(serverUuid, tempHandler, missingFiles, modPaths, token).ConfigureAwait(false);
             }
             catch (FileNotFoundException)
             {
@@ -1013,13 +1013,13 @@ public sealed partial class CharaDataManager : DisposableMediatorSubscriberBase
             charaDataDownloadDto.CustomizeData, token).ConfigureAwait(false);
     }
 
-    public async Task<(string Result, bool Success)> UploadFiles(int serverIndex, List<GamePathEntry> missingFileList, Func<Task>? postUpload = null)
+    public async Task<(string Result, bool Success)> UploadFiles(Guid serverUuid, List<GamePathEntry> missingFileList, Func<Task>? postUpload = null)
     {
         UploadProgress = new ValueProgress<string>();
         try
         {
             _uploadCts = _uploadCts.CancelRecreate();
-            var missingFiles = await _fileHandler.UploadFiles(serverIndex, [.. missingFileList.Select(k => k.HashOrFileSwap)], UploadProgress, _uploadCts.Token).ConfigureAwait(false);
+            var missingFiles = await _fileHandler.UploadFiles(serverUuid, [.. missingFileList.Select(k => k.HashOrFileSwap)], UploadProgress, _uploadCts.Token).ConfigureAwait(false);
             if (missingFiles.Any())
             {
                 Logger.LogInformation("Failed to upload {files}", string.Join(", ", missingFiles));

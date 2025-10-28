@@ -10,14 +10,14 @@ public class ServerBasedUserKeyComparator : IEqualityComparer<ServerBasedUserKey
     public bool Equals(ServerBasedUserKey? x, ServerBasedUserKey? y)
     {
         if (x == null || y == null) return false;
-        return x.UserData.UID.Equals(y.UserData.UID, StringComparison.Ordinal) && x.ServerIndex == y.ServerIndex;
+        return x.UserData.UID.Equals(y.UserData.UID, StringComparison.Ordinal) && x.ServerUuid == y.ServerUuid;
     }
 
     public int GetHashCode(ServerBasedUserKey obj)
     {
         HashCode hashCode = new();
         hashCode.Add(obj.UserData.UID);
-        hashCode.Add(obj.ServerIndex);
+        hashCode.Add(obj.ServerUuid);
         return hashCode.ToHashCode();
     }
 }

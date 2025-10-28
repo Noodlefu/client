@@ -433,7 +433,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
     public static Vector4 UploadColor((long, long) data) => data.Item1 == 0 ? ImGuiColors.DalamudGrey :
         data.Item1 == data.Item2 ? ImGuiColors.ParsedGreen : ImGuiColors.DalamudYellow;
 
-    public bool ApplyNotesFromClipboard(int serverIndex, string notes, bool overwrite)
+    public bool ApplyNotesFromClipboard(Guid serverUuid, string notes, bool overwrite)
     {
         var splitNotes = notes.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries).ToList();
         var splitNotesStart = splitNotes.FirstOrDefault();
@@ -452,8 +452,8 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                 var splittedEntry = note.Split(":", 2, StringSplitOptions.RemoveEmptyEntries);
                 var uid = splittedEntry[0];
                 var comment = splittedEntry[1].Trim('"');
-                if (_serverConfigurationManager.GetNoteForUid(serverIndex, uid) != null && !overwrite) continue;
-                _serverConfigurationManager.SetNoteForUid(serverIndex, uid, comment);
+                if (_serverConfigurationManager.GetNoteForUid(serverUuid, uid) != null && !overwrite) continue;
+                _serverConfigurationManager.SetNoteForUid(serverUuid, uid, comment);
             }
             catch
             {
@@ -657,7 +657,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
         AttachToolTip(helpText);
     }
 
-    public void DrawOAuth(int serverIndex, ServerStorage selectedServer)
+    public void DrawOAuth(Guid serverUuid, ServerStorage selectedServer)
     {
         var oauthToken = selectedServer.OAuthToken;
         _ = ImRaii.PushIndent(10f);
@@ -749,8 +749,8 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                 {
                     if (IconTextButton(FontAwesomeIcon.Exclamation, "Renew OAuth2 token manually") && CtrlPressed())
                     {
-                        _ = _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(serverIndex, selectedServer, forced: true)
-                            .ContinueWith((_) => _apiController.CreateConnectionsAsync(serverIndex));
+                        _ = _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(serverUuid, selectedServer, forced: true)
+                            .ContinueWith((_) => _apiController.CreateConnectionsAsync(serverUuid));
                     }
                 }
                 DrawHelpText("Hold CTRL to manually refresh your OAuth2 token. Normally you do not need to do this.");
@@ -798,7 +798,7 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
                             var token = await _serverConfigurationManager.GetDiscordOAuthToken(url!, selectedServer.GetAuthServerUri(), CancellationToken.None).ConfigureAwait(false);
                             selectedServer.OAuthToken = token;
                             _serverConfigurationManager.Save();
-                            await _apiController.CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
+                            await _apiController.CreateConnectionsAsync(serverUuid).ConfigureAwait(false);
                         });
                 }
             }
@@ -851,49 +851,6 @@ public partial class UiSharedService : DisposableMediatorSubscriberBase
         }
 
         return true;
-    }
-
-    public int DrawServiceSelection(int currentServerIndex)
-    {
-        string[] comboEntries = _serverConfigurationManager.GetServerNames();
-
-        if (_serverSelectionIndex == -1)
-        {
-            // Flip to first server
-            _serverSelectionIndex = 0;
-        }
-        bool isCurrent = _serverSelectionIndex == currentServerIndex;
-        for (int i = 0; i < comboEntries.Length; i++)
-        {
-            if (isCurrent)
-                comboEntries[i] += " [Current]";
-        }
-
-        var buttonSize = ImGui.CalcTextSize("Select Service").X;
-
-        ImGui.SetNextItemWidth(ImGui.GetContentRegionAvail().X - buttonSize - ImGui.GetStyle().ItemSpacing.X);
-        if (ImGui.BeginCombo("Select Service", comboEntries[_serverSelectionIndex]))
-        {
-            for (int i = 0; i < comboEntries.Length; i++)
-            {
-                bool isSelected = _serverSelectionIndex == i;
-                if (ImGui.Selectable(comboEntries[i], isSelected))
-                {
-                    _serverSelectionIndex = i;
-                }
-
-                if (isSelected)
-                {
-                    ImGui.SetItemDefaultFocus();
-                }
-            }
-
-            ImGui.EndCombo();
-        }
-
-        DrawAddCustomService();
-
-        return _serverSelectionIndex;
     }
 
     public void DrawAddCustomService()

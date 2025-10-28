@@ -9,6 +9,7 @@ using LaciSynchroni.Services.Events;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.WebAPI.Files.Models;
 using System.Numerics;
+using System;
 
 namespace LaciSynchroni.Services.Mediator;
 
@@ -31,8 +32,8 @@ public record GposeStartMessage : SameThreadMessage;
 public record GposeEndMessage : MessageBase;
 public record CutsceneEndMessage : MessageBase;
 public record CutsceneFrameworkUpdateMessage : SameThreadMessage;
-public record ConnectedMessage(ConnectionDto Connection, int serverIndex) : MessageBase;
-public record DisconnectedMessage(int ServerIndex) : SameThreadMessage;
+public record ConnectedMessage(ConnectionDto Connection, Guid ServerUuid) : MessageBase;
+public record DisconnectedMessage(Guid ServerUuid) : SameThreadMessage;
 public record PenumbraModSettingChangedMessage : MessageBase;
 public record PenumbraInitializedMessage : MessageBase;
 public record PenumbraDisposedMessage : MessageBase;
@@ -63,8 +64,8 @@ public record DownloadFinishedMessage(GameObjectHandler DownloadId) : MessageBas
 public record UiToggleMessage(Type UiType) : MessageBase;
 public record PlayerUploadingMessage(GameObjectHandler Handler, bool IsUploading) : MessageBase;
 public record ClearProfileDataMessage(ServerBasedUserKey? UserData = null) : MessageBase;
-public record CyclePauseMessage(int ServerIndex, UserData UserData) : MessageBase;
-public record PauseMessage(int ServerIndex, UserData UserData) : MessageBase;
+public record CyclePauseMessage(Guid ServerUuid, UserData UserData) : MessageBase;
+public record PauseMessage(Guid ServerUuid, UserData UserData) : MessageBase;
 public record ProfilePopoutToggle(Pair? Pair) : MessageBase;
 public record CompactUiChange(Vector2 Size, Vector2 Position) : MessageBase;
 public record ProfileOpenStandaloneMessage(Pair Pair) : MessageBase;
@@ -72,7 +73,7 @@ public record RemoveWindowMessage(WindowMediatorSubscriberBase Window) : Message
 public record RefreshUiMessage : MessageBase;
 public record OpenBanUserPopupMessage(Pair PairToBan, GroupFullInfoDto GroupFullInfoDto) : MessageBase;
 public record OpenCensusPopupMessage() : MessageBase;
-public record OpenSyncshellAdminPanel(GroupFullInfoDto GroupInfo, int ServerIndex) : MessageBase;
+public record OpenSyncshellAdminPanel(GroupFullInfoDto GroupInfo, Guid ServerUuid) : MessageBase;
 public record OpenPermissionWindow(Pair Pair) : MessageBase;
 public record DownloadLimitChangedMessage() : SameThreadMessage;
 public record CensusUpdateMessage(byte Gender, byte RaceId, byte TribeId) : MessageBase;
@@ -85,11 +86,11 @@ public record PenumbraRedrawCharacterMessage(ICharacter Character) : SameThreadM
 public record GameObjectHandlerCreatedMessage(GameObjectHandler GameObjectHandler, bool OwnedObject) : SameThreadMessage;
 public record GameObjectHandlerDestroyedMessage(GameObjectHandler GameObjectHandler, bool OwnedObject) : SameThreadMessage;
 public record HaltCharaDataCreation(bool Resume = false) : SameThreadMessage;
-public record GposeLobbyUserJoin(int ServerIndex, UserData UserData) : MessageBase;
-public record GPoseLobbyUserLeave(UserData UserData) : MessageBase;
-public record GPoseLobbyReceiveCharaData(int ServerIndex, CharaDataDownloadDto CharaDataDownloadDto) : MessageBase;
+public record GposeLobbyUserJoin(Guid ServerUuid, UserData UserData) : MessageBase;
+public record GPoseLobbyReceiveCharaData(Guid ServerUuid, CharaDataDownloadDto CharaDataDownloadDto) : MessageBase;
 public record GPoseLobbyReceivePoseData(UserData UserData, PoseData PoseData) : MessageBase;
 public record GPoseLobbyReceiveWorldData(UserData UserData, WorldData WorldData) : MessageBase;
+public record GPoseLobbyUserLeave(Guid ServerUuid, UserData UserData) : MessageBase;
 public record OpenCharaDataHubWithFilterMessage(UserData UserData) : MessageBase;
 #pragma warning restore S2094
 #pragma warning restore MA0048 // File name must match type name

@@ -18,48 +18,48 @@ public class TagHandler
         _serverConfigurationManager = serverConfigurationManager;
     }
 
-    public void AddTag(int serverIndex, string tag)
+    public void AddTag(Guid serverUuid, string tag)
     {
-        _serverConfigurationManager.AddTag(serverIndex, tag);
+        _serverConfigurationManager.AddTag(serverUuid, tag);
     }
 
-    public void AddTagToPairedUid(int serverIndex, string uid, string tagName)
+    public void AddTagToPairedUid(Guid serverUuid, string uid, string tagName)
     {
-        _serverConfigurationManager.AddTagForUid(serverIndex, uid, tagName);
+        _serverConfigurationManager.AddTagForUid(serverUuid, uid, tagName);
     }
 
-    public List<TagWithServerIndex> GetAllTagsSorted()
+    public List<TagWithServer> GetAllTagsSorted()
     {
         return _serverConfigurationManager.GetServerInfo()
-            .SelectMany((_, index) =>
+            .SelectMany(server =>
             {
-                var tags = _serverConfigurationManager.GetServerAvailablePairTags(index);
-                return tags.Select(tag => new TagWithServerIndex(index, tag));
+                var tags = _serverConfigurationManager.GetServerAvailablePairTags(server.Id);
+                return tags.Select(tag => new TagWithServer(server.Id, tag));
             })
             .OrderBy(t => t.Tag, StringComparer.Ordinal)
             .ToList();
     }
 
-    public List<string> GetAllTagsForServerSorted(int serverIndex)
+    public List<string> GetAllTagsForServerSorted(Guid serverUuid)
     {
-        return _serverConfigurationManager.GetServerAvailablePairTags(serverIndex)
+        return _serverConfigurationManager.GetServerAvailablePairTags(serverUuid)
             .OrderBy(s => s, StringComparer.Ordinal)
             .ToList();
     }
 
-    public HashSet<string> GetOtherUidsForTag(int serverIndex, string tag)
+    public HashSet<string> GetOtherUidsForTag(Guid serverUuid, string tag)
     {
-        return _serverConfigurationManager.GetUidsForTag(serverIndex, tag);
+        return _serverConfigurationManager.GetUidsForTag(serverUuid, tag);
     }
 
-    public bool HasAnyTag(int serverIndex, string uid)
+    public bool HasAnyTag(Guid serverUuid, string uid)
     {
-        return _serverConfigurationManager.HasTags(serverIndex, uid);
+        return _serverConfigurationManager.HasTags(serverUuid, uid);
     }
 
-    public bool HasTag(int serverIndex, string uid, string tagName)
+    public bool HasTag(Guid serverUuid, string uid, string tagName)
     {
-        return _serverConfigurationManager.ContainsTag(serverIndex, uid, tagName);
+        return _serverConfigurationManager.ContainsTag(serverUuid, uid, tagName);
     }
 
     /// <summary>
@@ -68,9 +68,9 @@ public class TagHandler
     /// <param name="serverIndex">server the tag belongs to</param>
     /// <param name="tag">the tag</param>
     /// <returns>open true/false</returns>
-    public bool IsTagOpen(int serverIndex, string tag)
+    public bool IsTagOpen(Guid serverUuid, string tag)
     {
-        return _serverConfigurationManager.ContainsOpenPairTag(serverIndex, tag);
+        return _serverConfigurationManager.ContainsOpenPairTag(serverUuid, tag);
     }
 
     /// <summary>
@@ -84,25 +84,25 @@ public class TagHandler
         return _serverConfigurationManager.ContainsGlobalOpenPairTag(tag);
     }
 
-    public void RemoveTag(int serverIndex, string tag)
+    public void RemoveTag(Guid serverUuid, string tag)
     {
-        _serverConfigurationManager.RemoveTag(serverIndex, tag);
+        _serverConfigurationManager.RemoveTag(serverUuid, tag);
     }
 
-    public void RemoveTagFromPairedUid(int serverIndex, string uid, string tagName)
+    public void RemoveTagFromPairedUid(Guid serverUuid, string uid, string tagName)
     {
-        _serverConfigurationManager.RemoveTagForUid(serverIndex, uid, tagName);
+        _serverConfigurationManager.RemoveTagForUid(serverUuid, uid, tagName);
     }
 
-    public void ToggleTagOpen(int serverIndex, string tag)
+    public void ToggleTagOpen(Guid serverUuid, string tag)
     {
-        if (IsTagOpen(serverIndex, tag))
+        if (IsTagOpen(serverUuid, tag))
         {
-            _serverConfigurationManager.RemoveOpenPairTag(serverIndex, tag);
+            _serverConfigurationManager.RemoveOpenPairTag(serverUuid, tag);
         }
         else
         {
-            _serverConfigurationManager.AddOpenPairTag(serverIndex, tag);
+            _serverConfigurationManager.AddOpenPairTag(serverUuid, tag);
         }
     }
 

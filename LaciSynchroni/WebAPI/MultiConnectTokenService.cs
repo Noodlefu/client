@@ -1,3 +1,4 @@
+using System;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
@@ -8,11 +9,9 @@ using System.Collections.Concurrent;
 
 namespace LaciSynchroni.WebAPI
 {
-    using ServerIndex = int;
-    
     public class MultiConnectTokenService
     {
-        private readonly ConcurrentDictionary<ServerIndex, ServerHubTokenProvider> _tokenProviders;
+        private readonly ConcurrentDictionary<Guid, ServerHubTokenProvider> _tokenProviders;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ServerConfigurationManager _serverConfigurationManager;
         private readonly DalamudUtilService _dalamudUtilService;
@@ -26,34 +25,34 @@ namespace LaciSynchroni.WebAPI
             _dalamudUtilService = dalamudUtilService;
             _loggerFactory = loggerFactory;
             _serverConfigurationManager = serverConfigurationManager;
-            _tokenProviders = new ConcurrentDictionary<ServerIndex, ServerHubTokenProvider>();
+            _tokenProviders = new ConcurrentDictionary<Guid, ServerHubTokenProvider>();
         }
 
-        public Task<string?> GetCachedToken(ServerIndex serverIndex)
+        public Task<string?> GetCachedToken(Guid serverUuid)
         {
-            return GetTokenProvider(serverIndex).GetToken();
+            return GetTokenProvider(serverUuid).GetToken();
         }
 
-        public Task<string?> GetOrUpdateToken(ServerIndex serverIndex, CancellationToken ct)
+        public Task<string?> GetOrUpdateToken(Guid serverUuid, CancellationToken ct)
         {
-            return GetTokenProvider(serverIndex).GetOrUpdateToken(ct);
+            return GetTokenProvider(serverUuid).GetOrUpdateToken(ct);
         }
 
-        public Task<bool> TryUpdateOAuth2LoginTokenAsync(ServerIndex serverIndex, ServerStorage currentServer, bool forced = false)
+        public Task<bool> TryUpdateOAuth2LoginTokenAsync(Guid serverUuid, ServerStorage currentServer, bool forced = false)
         {
-            return GetTokenProvider(serverIndex).TryUpdateOAuth2LoginTokenAsync(currentServer, forced);
+            return GetTokenProvider(serverUuid).TryUpdateOAuth2LoginTokenAsync(currentServer, forced);
         }
         
-        private ServerHubTokenProvider GetTokenProvider(ServerIndex serverIndex)
+        private ServerHubTokenProvider GetTokenProvider(Guid serverUuid)
         {
-            return _tokenProviders.GetOrAdd(serverIndex, BuildNewTokenProvider);
+            return _tokenProviders.GetOrAdd(serverUuid, BuildNewTokenProvider);
         }
 
-        private ServerHubTokenProvider BuildNewTokenProvider(ServerIndex serverIndex)
+        private ServerHubTokenProvider BuildNewTokenProvider(Guid serverUuid)
         {
             return new ServerHubTokenProvider(
                 _loggerFactory.CreateLogger<ServerHubTokenProvider>(),
-                serverIndex,
+                serverUuid,
                 _serverConfigurationManager,
                 _dalamudUtilService,
                 _syncMediator,

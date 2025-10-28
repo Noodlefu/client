@@ -261,14 +261,14 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                 return;
             }
 
-            int serverIdx = 0;
-            var selectedServer = _serverConfigurationManager.GetServerByIndex(serverIdx);
+            var serverUuid = _serverConfigurationManager.ServerUuids.First();
+            var selectedServer = _serverConfigurationManager.GetServerByUuid(serverUuid);
 
             UiSharedService.DistanceSeparator();
-            UiSharedService.TextWrapped($"You have configured {_serverConfigurationManager.GetServerNameByIndex(serverIdx)} as your Laci Synchroni service. You now have to configure login and authenticate yourself.");
+            UiSharedService.TextWrapped($"You have configured {_serverConfigurationManager.GetServerName(serverUuid)} as your Laci Synchroni service. You now have to configure login and authenticate yourself.");
             if (ImGui.Checkbox("Use Login with OAuth", ref _useOAuthLogin))
             {
-                _serverConfigurationManager.GetServerByIndex(serverIdx).UseOAuth2 = _useOAuthLogin;
+                selectedServer.UseOAuth2 = _useOAuthLogin;
                 _serverConfigurationManager.Save();
             }
             if (!_useOAuthLogin)
@@ -296,7 +296,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                 else if (_secretKey.Length == 64)
                 {
                     ImGui.SameLine();
-                    var server = _serverConfigurationManager.GetServerByIndex(serverIdx);
+                    var server = selectedServer;
                     if (!_isConnectingCustomService)
                     {
                         if (ImGui.Button(buttonText))
@@ -307,11 +307,11 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                                 Key = _secretKey,
                             };
                             server.SecretKeys[0] = secretKey;
-                            _serverConfigurationManager.AddCurrentCharacterToServer(serverIdx);
+                            _serverConfigurationManager.AddCurrentCharacterToServer(serverUuid);
                             // Just assume the user has seen the census popup, since the popup itself is disabled.
                             _serverConfigurationManager.ShownCensusPopup = true;
                             _serverConfigurationManager.Save();
-                            _ = Task.Run(() => _uiShared.ApiController.CreateConnectionsAsync(serverIdx));
+                            _ = Task.Run(() => _uiShared.ApiController.CreateConnectionsAsync(serverUuid));
                             _isConnectingCustomService = true;
                         }
                     }
@@ -329,7 +329,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                 if (string.IsNullOrEmpty(selectedServer.OAuthToken))
                 {
                     UiSharedService.TextWrapped("Press the button below to verify the server has OAuth2 capabilities. Afterwards, authenticate using Discord in the Browser window.");
-                    _uiShared.DrawOAuth(serverIdx, selectedServer);
+                    _uiShared.DrawOAuth(serverUuid, selectedServer);
                 }
                 else
                 {
@@ -360,7 +360,7 @@ public partial class IntroUi : WindowMediatorSubscriberBase
                     {
                         if (_uiShared.IconTextButton(FontAwesomeIcon.Link, "Connect to Service"))
                         {
-                            _ = Task.Run(() => _uiShared.ApiController.CreateConnectionsAsync(serverIdx));
+                            _ = Task.Run(() => _uiShared.ApiController.CreateConnectionsAsync(serverUuid));
                         }
                     }
                     if (string.IsNullOrEmpty(auth.UID))

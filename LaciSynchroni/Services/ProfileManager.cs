@@ -41,7 +41,7 @@ public class ProfileManager : MediatorSubscriberBase
         {
             foreach (var serverBasedUserKey in _syncProfiles.Keys)
             {
-                if (msg.ServerIndex == serverBasedUserKey.ServerIndex)
+                if (msg.ServerUuid == serverBasedUserKey.ServerUuid)
                 {
                     _syncProfiles.TryRemove(serverBasedUserKey, out _);
                 }
@@ -66,8 +66,8 @@ public class ProfileManager : MediatorSubscriberBase
         {
             _syncProfiles[data] = _loadingProfileData;
             var userData = data.UserData;
-            var userUid = _apiController.GetUidByServer(data.ServerIndex);
-            var profile = await _apiController.UserGetProfile(data.ServerIndex, new UserDto(data.UserData)).ConfigureAwait(false);
+            var userUid = _apiController.GetUidByServer(data.ServerUuid);
+            var profile = await _apiController.UserGetProfile(data.ServerUuid, new UserDto(data.UserData)).ConfigureAwait(false);
             ProfileData profileData = new(profile.Disabled, profile.IsNSFW ?? false,
                 string.IsNullOrEmpty(profile.ProfilePictureBase64) ? _laciLogo : profile.ProfilePictureBase64,
                 !string.IsNullOrEmpty(userData.Alias) && !string.Equals(userData.Alias, userData.UID, StringComparison.Ordinal) ? _laciSupporter : string.Empty,

@@ -26,9 +26,9 @@ namespace LaciSynchroni.WebAPI;
 public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHubClient
 {
     /// <summary>
-    /// Index of the server we are currently connected to, <see cref="LaciSynchroni.SyncConfiguration.Models.ServerStorage"/>
+    /// Unique identifier of the server this client is connected to.
     /// </summary>
-    public readonly int ServerIndex;
+    public readonly Guid ServerUuid;
 
     private readonly bool _isWine;
 
@@ -65,17 +65,17 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     protected bool IsConnected => _serverState == ServerState.Connected;
     public string UID => ConnectionDto?.User.UID ?? string.Empty;
 
-    private ServerStorage ServerToUse => _serverConfigurationManager.GetServerByIndex(ServerIndex);
+    private ServerStorage ServerToUse => _serverConfigurationManager.GetServerByUuid(ServerUuid);
 
-    public SyncHubClient(int serverIndex,
+    public SyncHubClient(Guid serverUuid,
         ServerConfigurationManager serverConfigurationManager, PairManager pairManager,
         DalamudUtilService dalamudUtilService,
         ILoggerFactory loggerFactory, ILoggerProvider loggerProvider, SyncMediator mediator, MultiConnectTokenService multiConnectTokenService, SyncConfigService syncConfigService, HttpClient httpClient) : base(
-        loggerFactory.CreateLogger(nameof(SyncHubClient) + serverIndex + "Mediator"), mediator)
+        loggerFactory.CreateLogger(nameof(SyncHubClient) + serverUuid + "Mediator"), mediator)
     {
-        ServerIndex = serverIndex;
+        ServerUuid = serverUuid;
         _isWine = dalamudUtilService.IsWine;
-        _logger = loggerFactory.CreateLogger(nameof(SyncHubClient) + serverIndex);
+        _logger = loggerFactory.CreateLogger(nameof(SyncHubClient) + serverUuid);
         _loggerProvider = loggerProvider;
         _multiConnectTokenService = multiConnectTokenService;
         _syncConfigService = syncConfigService;
@@ -84,9 +84,21 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _dalamudUtil = dalamudUtilService;
         _serverConfigurationManager = serverConfigurationManager;
 
-        Mediator.Subscribe<CyclePauseMessage>(this, (msg) => _ = CyclePauseAsync(msg.ServerIndex, msg.UserData));
+        Mediator.Subscribe<CyclePauseMessage>(this, (msg) =>
+        {
+            if (msg.ServerUuid == ServerUuid)
+            {
+                _ = CyclePauseAsync(msg.ServerUuid, msg.UserData);
+            }
+        });
         Mediator.Subscribe<CensusUpdateMessage>(this, (msg) => _lastCensus = msg);
-        Mediator.Subscribe<PauseMessage>(this, (msg) => _ = PauseAsync(msg.ServerIndex, msg.UserData));
+        Mediator.Subscribe<PauseMessage>(this, (msg) =>
+        {
+            if (msg.ServerUuid == ServerUuid)
+            {
+                _ = PauseAsync(msg.ServerUuid, msg.UserData);
+            }
+        });
     }
 
 
@@ -267,7 +279,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         try
         {
-            _lastUsedToken = await _multiConnectTokenService.GetOrUpdateToken(ServerIndex, cancellationToken).ConfigureAwait(false);
+            _lastUsedToken = await _multiConnectTokenService.GetOrUpdateToken(ServerUuid, cancellationToken).ConfigureAwait(false);
         }
         catch (SyncAuthFailureException ex)
         {
@@ -298,7 +310,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                 $"Stopping existing connection to {ServerToUse.ServerName}")));
             _initialized = false;
             _healthCheckTokenSource?.Cancel();
-            Mediator.Publish(new DisconnectedMessage(ServerIndex));
+            Mediator.Publish(new DisconnectedMessage(ServerUuid));
             _connection = null;
             ConnectionDto = null;
 
@@ -335,7 +347,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         _connection = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
             {
-                options.AccessTokenProvider = () => _multiConnectTokenService.GetOrUpdateToken(ServerIndex, ct);
+                options.AccessTokenProvider = () => _multiConnectTokenService.GetOrUpdateToken(ServerUuid, ct);
                 options.Transports = transportType;
             })
             .AddMessagePackProtocol(opt =>
@@ -357,7 +369,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
                         .WithCompression(MessagePackCompression.Lz4Block)
                         .WithResolver(resolver);
             })
-            .WithAutomaticReconnect(new ForeverRetryPolicy(Mediator, ServerIndex))
+            .WithAutomaticReconnect(new ForeverRetryPolicy(Mediator, ServerUuid))
             .ConfigureLogging(a =>
             {
                 a.ClearProviders().AddProvider(_loggerProvider);
@@ -376,7 +388,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     private Task ConnectionOnClosed(Exception? arg)
     {
         _healthCheckTokenSource?.Cancel();
-        Mediator.Publish(new DisconnectedMessage(ServerIndex));
+        Mediator.Publish(new DisconnectedMessage(ServerUuid));
         _serverState = ServerState.Offline;
         if (arg != null)
         {
@@ -406,7 +418,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             _serverState = ServerState.Connected;
             await LoadIninitialPairsAsync().ConfigureAwait(false);
             await LoadOnlinePairsAsync().ConfigureAwait(false);
-            Mediator.Publish(new ConnectedMessage(ConnectionDto, ServerIndex));
+            Mediator.Publish(new ConnectedMessage(ConnectionDto, ServerUuid));
         }
         catch (Exception ex)
         {
@@ -431,7 +443,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     public async Task<ConnectionDto> GetConnectionDtoAsync(bool publishConnected)
     {
         var dto = await _connection!.InvokeAsync<ConnectionDto>(nameof(GetConnectionDto)).ConfigureAwait(false);
-        if (publishConnected) Mediator.Publish(new ConnectedMessage(dto, ServerIndex));
+        if (publishConnected) Mediator.Publish(new ConnectedMessage(dto, ServerUuid));
         return dto;
     }
 
@@ -500,7 +512,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         bool requireReconnect = false;
         try
         {
-            var token = await _multiConnectTokenService.GetOrUpdateToken(ServerIndex, ct).ConfigureAwait(false);
+            var token = await _multiConnectTokenService.GetOrUpdateToken(ServerUuid, ct).ConfigureAwait(false);
             if (!string.Equals(token, _lastUsedToken, StringComparison.Ordinal))
             {
                 Logger.LogDebug("Reconnecting due to updated token");
@@ -532,13 +544,13 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         foreach (var entry in await GroupsGetAll().ConfigureAwait(false))
         {
             Logger.LogDebug("Group: {entry}", entry);
-            _pairManager.AddGroup(entry, ServerIndex);
+            _pairManager.AddGroup(entry, ServerUuid);
         }
 
         foreach (var userPair in await UserGetPairedClients().ConfigureAwait(false))
         {
             Logger.LogDebug("Individual Pair: {userPair}", userPair);
-            _pairManager.AddUserPair(userPair, ServerIndex);
+            _pairManager.AddUserPair(userPair, ServerUuid);
         }
     }
 
@@ -555,7 +567,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         foreach (var entry in await UserGetOnlinePairs(dto).ConfigureAwait(false))
         {
             Logger.LogDebug("Pair online: {pair}", entry);
-            _pairManager.MarkPairOnline(entry, ServerIndex, sendNotif: false);
+            _pairManager.MarkPairOnline(entry, ServerUuid, sendNotif: false);
         }
     }
 
@@ -598,9 +610,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         }
     }
 
-    public Task CyclePauseAsync(int serverIndex, UserData userData)
+    public Task CyclePauseAsync(Guid serverUuid, UserData userData)
     {
-        if (serverIndex != ServerIndex)
+        if (serverUuid != ServerUuid)
         {
             return Task.CompletedTask;
         }
@@ -608,7 +620,7 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         cts.CancelAfter(TimeSpan.FromSeconds(5));
         _ = Task.Run(async () =>
         {
-            var pair = _pairManager.GetOnlineUserPairs(ServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
+            var pair = _pairManager.GetOnlineUserPairs(ServerUuid).Single(p => p.UserPair != null && p.UserData == userData);
             var perm = pair.UserPair!.OwnPermissions;
             perm.SetPaused(paused: true);
             await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);
@@ -626,13 +638,13 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
         return Task.CompletedTask;
     }
 
-    private async Task PauseAsync(int serverIndex, UserData userData)
+    private async Task PauseAsync(Guid serverUuid, UserData userData)
     {
-        if (serverIndex != ServerIndex)
+        if (serverUuid != ServerUuid)
         {
             return;
         }
-        var pair = _pairManager.GetOnlineUserPairs(ServerIndex).Single(p => p.UserPair != null && p.UserData == userData);
+        var pair = _pairManager.GetOnlineUserPairs(ServerUuid).Single(p => p.UserPair != null && p.UserData == userData);
         var perm = pair.UserPair!.OwnPermissions;
         perm.SetPaused(paused: true);
         await UserSetPairPermissions(new UserPermissionsDto(userData, perm)).ConfigureAwait(false);

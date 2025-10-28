@@ -51,7 +51,7 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
         {
             var spacing = ImGui.GetStyle().ItemSpacing;
 
-            var msg = new ServerBasedUserKey(Pair.UserData, Pair.ServerIndex);
+            var msg = new ServerBasedUserKey(Pair.UserData, Pair.ServerUuid);
             var syncProfile = _profileManager.GetSyncProfile(msg);
 
             if (_textureWrap == null || !syncProfile.ImageData.Value.SequenceEqual(_lastProfilePicture))
@@ -113,7 +113,7 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
             ImGui.EndChildFrame();
 
             ImGui.SetCursorPosY(postDummy);
-            var note = _serverManager.GetNoteForUid(Pair.ServerIndex, Pair.UserData.UID);
+            var note = _serverManager.GetNoteForUid(Pair.ServerUuid, Pair.UserData.UID);
             if (!string.IsNullOrEmpty(note))
             {
                 UiSharedService.ColorText(note, ImGuiColors.DalamudGrey);
@@ -145,7 +145,7 @@ public class StandaloneProfileUi : WindowMediatorSubscriberBase
                 ImGui.TextUnformatted("Paired through Syncshells:");
                 foreach (var group in Pair.UserPair.Groups)
                 {
-                    var groupNote = _serverManager.GetNoteForGid(Pair.ServerIndex, group);
+                    var groupNote = _serverManager.GetNoteForGid(Pair.ServerUuid, group);
                     var groupName = _pairManager.GroupPairs.First(f => string.Equals(f.Key.GroupFullInfo.GID, group, StringComparison.Ordinal)).Key.GroupFullInfo.GroupAliasOrGID;
                     var groupString = string.IsNullOrEmpty(groupNote) ? groupName : $"{groupNote} ({groupName})";
                     ImGui.TextUnformatted("- " + groupString);

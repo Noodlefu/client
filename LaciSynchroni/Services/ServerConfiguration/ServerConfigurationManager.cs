@@ -12,6 +12,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System;
 
 namespace LaciSynchroni.Services.ServerConfiguration;
 
@@ -38,9 +39,13 @@ public class ServerConfigurationManager
         _syncConfigService = syncConfigService;
         _httpClient = httpClient;
         _syncMediator = syncMediator;
+
+        EnsureServerUuids();
+        EnsureServerTagConsistency();
+        EnsureServerNotesConsistency();
     }
 
-    public IEnumerable<int> ServerIndexes => _serverConfigService.Current.ServerStorage.Select((_, i) => i);
+    public IEnumerable<Guid> ServerUuids => _serverConfigService.Current.ServerStorage.Select(server => server.ServerUuid);
 
     public bool AnyServerConfigured => _serverConfigService.Current.ServerStorage.Count > 0;
     public bool SendCensusData
@@ -69,9 +74,9 @@ public class ServerConfigurationManager
         }
     }
 
-    public (string OAuthToken, string UID)? GetOAuth2(out bool hasMulti, int serverIdx)
+    public (string OAuthToken, string UID)? GetOAuth2(Guid serverUuid, out bool hasMulti)
     {
-        ServerStorage currentServer = GetServerByIndex(serverIdx);
+        ServerStorage currentServer = GetServerByUuid(serverUuid);
         hasMulti = false;
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
@@ -110,9 +115,9 @@ public class ServerConfigurationManager
         return null;
     }
 
-    public string? GetSecretKey(out bool hasMulti, int serverIdx)
+    public string? GetSecretKey(Guid serverUuid, out bool hasMulti)
     {
-        var currentServer = GetServerByIndex(serverIdx);
+        var currentServer = GetServerByUuid(serverUuid);
         hasMulti = false;
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
@@ -168,14 +173,14 @@ public class ServerConfigurationManager
         return _serverConfigService.Current.ServerStorage.Select(v => v.ServerUri).ToArray();
     }
 
-    public string GetServerNameByIndex(int index)
+    public string GetServerName(Guid serverUuid)
     {
-        return GetServerByIndex(index).ServerName;
+        return GetServerByUuid(serverUuid).ServerName;
     }
-    
-    public ServerStorage GetServerByIndex(int idx)
+
+    public ServerStorage GetServerByUuid(Guid serverUuid)
     {
-        return _serverConfigService.Current.ServerStorage[idx];
+        return _serverConfigService.Current.ServerStorage.First(server => server.ServerUuid == serverUuid);
     }
 
     public string GetDiscordUserFromToken(ServerStorage server)
@@ -199,9 +204,9 @@ public class ServerConfigurationManager
     public List<ServerInfoDto> GetServerInfo()
     {
         var items = _serverConfigService.Current.ServerStorage
-            .Select((v, index) => new ServerInfoDto
+            .Select(v => new ServerInfoDto
             {
-                Id = index,
+                Id = v.ServerUuid,
                 Name = v.ServerName,
                 Uri = v.ServerUri,
                 HubUri = v.ServerHubUri
@@ -227,9 +232,9 @@ public class ServerConfigurationManager
         _serverConfigService.Save();
     }
 
-    internal void AddCurrentCharacterToServer(int serverSelectionIndex)
+    internal void AddCurrentCharacterToServer(Guid serverUuid)
     {
-        var server = GetServerByIndex(serverSelectionIndex);
+        var server = GetServerByUuid(serverUuid);
         if (server.Authentications.Any(c => string.Equals(c.CharacterName, _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult(), StringComparison.Ordinal)
                 && c.WorldId == _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult()))
             return;
@@ -244,9 +249,9 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void AddEmptyCharacterToServer(int serverSelectionIndex)
+    internal void AddEmptyCharacterToServer(Guid serverUuid)
     {
-        var server = GetServerByIndex(serverSelectionIndex);
+        var server = GetServerByUuid(serverUuid);
         server.Authentications.Add(new Authentication()
         {
             SecretKeyIdx = server.SecretKeys.Any() ? server.SecretKeys.First().Key : -1,
@@ -254,9 +259,9 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void AddOpenPairTag(int serverIndex, string tag)
+    internal void AddOpenPairTag(Guid serverUuid, string tag)
     {
-        GetTagStorageForIndex(serverIndex).OpenPairTags.Add(tag);
+        GetTagStorageForUuid(serverUuid).OpenPairTags.Add(tag);
         _serverTagConfig.Save();
     }
     
@@ -285,31 +290,31 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal void AddTag(int serverIndex, string tag)
+    internal void AddTag(Guid serverUuid, string tag)
     {
-        GetTagStorageForIndex(serverIndex).ServerAvailablePairTags.Add(tag);
+        GetTagStorageForUuid(serverUuid).ServerAvailablePairTags.Add(tag);
         _serverTagConfig.Save();
         _syncMediator.Publish(new RefreshUiMessage());
     }
 
-    internal void AddTagForUid(int serverIndex, string uid, string tagName)
+    internal void AddTagForUid(Guid serverUuid, string uid, string tagName)
     {
-        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForUuid(serverUuid).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             tags.Add(tagName);
             _syncMediator.Publish(new RefreshUiMessage());
         }
         else
         {
-            GetTagStorageForIndex(serverIndex).UidServerPairedUserTags[uid] = [tagName];
+            GetTagStorageForUuid(serverUuid).UidServerPairedUserTags[uid] = [tagName];
         }
 
         _serverTagConfig.Save();
     }
 
-    internal bool ContainsOpenPairTag(int serverIndex, string tag)
+    internal bool ContainsOpenPairTag(Guid serverUuid, string tag)
     {
-        return GetTagStorageForIndex(serverIndex).OpenPairTags.Contains(tag);
+        return GetTagStorageForUuid(serverUuid).OpenPairTags.Contains(tag);
     }
     
     internal bool ContainsGlobalOpenPairTag(string tag)
@@ -317,9 +322,9 @@ public class ServerConfigurationManager
         return _serverTagConfig.Current.GlobalTagStorage.OpenPairTags.Contains(tag);
     }
 
-    internal bool ContainsTag(int serverIndex, string uid, string tag)
+    internal bool ContainsTag(Guid serverUuid, string uid, string tag)
     {
-        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForUuid(serverUuid).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             return tags.Contains(tag, StringComparer.Ordinal);
         }
@@ -333,9 +338,9 @@ public class ServerConfigurationManager
         Save();
     }
 
-    internal string? GetNoteForGid(int serverIndex, string gID)
+    internal string? GetNoteForGid(Guid serverUuid, string gID)
     {
-        if (NotesStorageForServer(serverIndex).GidServerComments.TryGetValue(gID, out var note))
+        if (NotesStorageForUuid(serverUuid).GidServerComments.TryGetValue(gID, out var note))
         {
             if (string.IsNullOrEmpty(note)) return null;
             return note;
@@ -344,9 +349,9 @@ public class ServerConfigurationManager
         return null;
     }
 
-    internal string? GetNoteForUid(int serverIndex, string uid)
+    internal string? GetNoteForUid(Guid serverUuid, string uid)
     {
-        if (NotesStorageForServer(serverIndex).UidServerComments.TryGetValue(uid, out var note))
+        if (NotesStorageForUuid(serverUuid).UidServerComments.TryGetValue(uid, out var note))
         {
             if (string.IsNullOrEmpty(note)) return null;
             return note;
@@ -354,24 +359,24 @@ public class ServerConfigurationManager
         return null;
     }
 
-    internal HashSet<string> GetServerAvailablePairTags(int serverIndex)
+    internal HashSet<string> GetServerAvailablePairTags(Guid serverUuid)
     {
-        return GetTagStorageForIndex(serverIndex).ServerAvailablePairTags;
+        return GetTagStorageForUuid(serverUuid).ServerAvailablePairTags;
     }
 
-    internal Dictionary<string, List<string>> GetUidServerPairedUserTags(int serverIndex)
+    internal Dictionary<string, List<string>> GetUidServerPairedUserTags(Guid serverUuid)
     {
-        return GetTagStorageForIndex(serverIndex).UidServerPairedUserTags;
+        return GetTagStorageForUuid(serverUuid).UidServerPairedUserTags;
     }
 
-    internal HashSet<string> GetUidsForTag(int serverIndex, string tag)
+    internal HashSet<string> GetUidsForTag(Guid serverUuid, string tag)
     {
-        return GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.Where(p => p.Value.Contains(tag, StringComparer.Ordinal)).Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+        return GetTagStorageForUuid(serverUuid).UidServerPairedUserTags.Where(p => p.Value.Contains(tag, StringComparer.Ordinal)).Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
     }
 
-    internal bool HasTags(int serverIndex, string uid)
+    internal bool HasTags(Guid serverUuid, string uid)
     {
-        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForUuid(serverUuid).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             return tags.Any();
         }
@@ -379,33 +384,33 @@ public class ServerConfigurationManager
         return false;
     }
 
-    internal void RemoveCharacterFromServer(int serverSelectionIndex, Authentication item)
+    internal void RemoveCharacterFromServer(Guid serverUuid, Authentication item)
     {
-        var server = GetServerByIndex(serverSelectionIndex);
+        var server = GetServerByUuid(serverUuid);
         server.Authentications.Remove(item);
         Save();
     }
 
-    internal void RemoveOpenPairTag(int serverIndex, string tag)
+    internal void RemoveOpenPairTag(Guid serverUuid, string tag)
     {
-        GetTagStorageForIndex(serverIndex).OpenPairTags.Remove(tag);
+        GetTagStorageForUuid(serverUuid).OpenPairTags.Remove(tag);
         _serverTagConfig.Save();
     }
 
-    internal void RemoveTag(int serverIndex, string tag)
+    internal void RemoveTag(Guid serverUuid, string tag)
     {
-        GetTagStorageForIndex(serverIndex).ServerAvailablePairTags.Remove(tag);
-        foreach (var uid in GetUidsForTag(serverIndex, tag))
+        GetTagStorageForUuid(serverUuid).ServerAvailablePairTags.Remove(tag);
+        foreach (var uid in GetUidsForTag(serverUuid, tag))
         {
-            RemoveTagForUid(serverIndex, uid, tag, save: false);
+            RemoveTagForUid(serverUuid, uid, tag, save: false);
         }
         _serverTagConfig.Save();
         _syncMediator.Publish(new RefreshUiMessage());
     }
 
-    internal void RemoveTagForUid(int serverIndex, string uid, string tagName, bool save = true)
+    internal void RemoveTagForUid(Guid serverUuid, string uid, string tagName, bool save = true)
     {
-        if (GetTagStorageForIndex(serverIndex).UidServerPairedUserTags.TryGetValue(uid, out var tags))
+        if (GetTagStorageForUuid(serverUuid).UidServerPairedUserTags.TryGetValue(uid, out var tags))
         {
             tags.Remove(tagName);
 
@@ -422,43 +427,43 @@ public class ServerConfigurationManager
         _notesConfig.Save();
     }
 
-    internal void SetNoteForGid(int serverIndex, string gid, string note, bool save = true)
+    internal void SetNoteForGid(Guid serverUuid, string gid, string note, bool save = true)
     {
         if (string.IsNullOrEmpty(gid)) return;
 
-        NotesStorageForServer(serverIndex).GidServerComments[gid] = note;
+        NotesStorageForUuid(serverUuid).GidServerComments[gid] = note;
         if (save)
             SaveNotes();
     }
 
-    internal void SetNoteForUid(int serverIndex, string uid, string note, bool save = true)
+    internal void SetNoteForUid(Guid serverUuid, string uid, string note, bool save = true)
     {
         if (string.IsNullOrEmpty(uid)) return;
 
-        NotesStorageForServer(serverIndex).UidServerComments[uid] = note;
+        NotesStorageForUuid(serverUuid).UidServerComments[uid] = note;
         if (save)
             SaveNotes();
     }
 
-    internal void AutoPopulateNoteForUid(int serverIndex, string uid, string note)
+    internal void AutoPopulateNoteForUid(Guid serverUuid, string uid, string note)
     {
         if (!_syncConfigService.Current.AutoPopulateEmptyNotesFromCharaName
-            || GetNoteForUid(serverIndex, uid) != null)
+            || GetNoteForUid(serverUuid, uid) != null)
             return;
 
-        SetNoteForUid(serverIndex, uid, note, save: true);
+        SetNoteForUid(serverUuid, uid, note, save: true);
     }
 
-    private ServerNotesStorage NotesStorageForServer(int serverIndex)
+    private ServerNotesStorage NotesStorageForUuid(Guid serverUuid)
     {
-        var serverUri = GetServerByIndex(serverIndex).ServerUri;
+        var serverUri = GetServerByUuid(serverUuid).ServerUri;
         TryCreateNotesStorage(serverUri);
         return _notesConfig.Current.ServerNotes[serverUri];
     }
 
-    private ServerTagStorage GetTagStorageForIndex(int serverIndex)
+    private ServerTagStorage GetTagStorageForUuid(Guid serverUuid)
     {
-        var serverUri = GetServerByIndex(serverIndex).ServerUri;
+        var serverUri = GetServerByUuid(serverUuid).ServerUri;
         TryCreateCurrentServerTagStorage(serverUri);
         return _serverTagConfig.Current.ServerTagStorage[serverUri];
     }
@@ -476,6 +481,48 @@ public class ServerConfigurationManager
         if (!_serverTagConfig.Current.ServerTagStorage.ContainsKey(apiUrl))
         {
             _serverTagConfig.Current.ServerTagStorage[apiUrl] = new();
+        }
+    }
+
+    private void EnsureServerUuids()
+    {
+        var serverConfig = _serverConfigService.Current;
+        bool updated = false;
+
+        foreach (var server in serverConfig.ServerStorage)
+        {
+            if (server.ServerUuid == Guid.Empty)
+            {
+                server.ServerUuid = Guid.NewGuid();
+                updated = true;
+            }
+        }
+
+        if (serverConfig.SelectedServerUuid == Guid.Empty && serverConfig.ServerStorage.Count > 0)
+        {
+            serverConfig.SelectedServerUuid = serverConfig.ServerStorage[0].ServerUuid;
+            updated = true;
+        }
+
+        if (updated)
+        {
+            _serverConfigService.Save();
+        }
+    }
+
+    private void EnsureServerTagConsistency()
+    {
+        foreach (var server in _serverConfigService.Current.ServerStorage)
+        {
+            TryCreateCurrentServerTagStorage(server.ServerUri);
+        }
+    }
+
+    private void EnsureServerNotesConsistency()
+    {
+        foreach (var server in _serverConfigService.Current.ServerStorage)
+        {
+            TryCreateNotesStorage(server.ServerUri);
         }
     }
 
@@ -542,14 +589,14 @@ public class ServerConfigurationManager
         return discordToken;
     }
 
-    public HttpTransportType GetTransport(int serverIndex)
+    public HttpTransportType GetTransport(Guid serverUuid)
     {
-        return GetServerByIndex(serverIndex).HttpTransportType;
+        return GetServerByUuid(serverUuid).HttpTransportType;
     }
 
-    public void SetTransportType(int serverIndex, HttpTransportType httpTransportType)
+    public void SetTransportType(Guid serverUuid, HttpTransportType httpTransportType)
     {
-        GetServerByIndex(serverIndex).HttpTransportType = httpTransportType;
+        GetServerByUuid(serverUuid).HttpTransportType = httpTransportType;
         Save();
     }
 }

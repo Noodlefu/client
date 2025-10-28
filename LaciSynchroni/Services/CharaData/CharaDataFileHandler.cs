@@ -119,10 +119,10 @@ public sealed class CharaDataFileHandler : IDisposable
         _fileDownloadManager.Dispose();
     }
 
-    public async Task DownloadFilesAsync(int serverIndex, GameObjectHandler tempHandler, List<FileReplacementData> missingFiles, Dictionary<string, string> modPaths, CancellationToken token)
+    public async Task DownloadFilesAsync(Guid serverUuid, GameObjectHandler tempHandler, List<FileReplacementData> missingFiles, Dictionary<string, string> modPaths, CancellationToken token)
     {
-        await _fileDownloadManager.InitiateDownloadList(serverIndex, tempHandler, missingFiles, token).ConfigureAwait(false);
-        await _fileDownloadManager.DownloadFiles(serverIndex, tempHandler, missingFiles, token).ConfigureAwait(false);
+        await _fileDownloadManager.InitiateDownloadList(serverUuid, tempHandler, missingFiles, token).ConfigureAwait(false);
+        await _fileDownloadManager.DownloadFiles(serverUuid, tempHandler, missingFiles, token).ConfigureAwait(false);
         token.ThrowIfCancellationRequested();
         foreach (var file in missingFiles.SelectMany(m => m.GamePaths, (FileEntry, GamePath) => (FileEntry.Hash, GamePath)))
         {
@@ -299,8 +299,8 @@ public sealed class CharaDataFileHandler : IDisposable
         }
     }
 
-    internal async Task<List<string>> UploadFiles(int serverIndex, List<string> fileList, ValueProgress<string> uploadProgress, CancellationToken token)
+    internal async Task<List<string>> UploadFiles(Guid serverUuid, List<string> fileList, ValueProgress<string> uploadProgress, CancellationToken token)
     {
-        return await _fileUploadManager.UploadFiles(serverIndex, fileList, uploadProgress, token).ConfigureAwait(false);
+        return await _fileUploadManager.UploadFiles(serverUuid, fileList, uploadProgress, token).ConfigureAwait(false);
     }
 }

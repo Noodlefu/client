@@ -1,4 +1,5 @@
-﻿using FFXIVClientStructs.FFXIV.Client.Game.Object;
+﻿using System;
+using FFXIVClientStructs.FFXIV.Client.Game.Object;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.FileCache;
 using LaciSynchroni.Interop.Ipc;
@@ -68,7 +69,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         _serverConfigManager = serverConfigManager;
         _concurrentPairLockService = concurrentPairLockService;
         _penumbraCollection = _ipcManager.Penumbra.CreateTemporaryCollectionAsync(logger, Pair.UserData.UID).ConfigureAwait(false).GetAwaiter().GetResult();
-        _serverInfo = _serverConfigManager.GetServerByIndex(Pair.ServerIndex);
+        _serverInfo = _serverConfigManager.GetServerByUuid(Pair.ServerUuid);
 
         Mediator.Subscribe<FrameworkUpdateMessage>(this, (_) => FrameworkUpdate());
         Mediator.Subscribe<ZoneSwitchStartMessage>(this, (_) =>
@@ -180,16 +181,17 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
             return;
         }
 
-        var renderLockServerIndex = _concurrentPairLockService.GetRenderLock(PlayerNameHash, Pair.ServerIndex);
-        if (renderLockServerIndex != Pair.ServerIndex && renderLockServerIndex > -1)
+        var renderLockServerUuid = _concurrentPairLockService.GetRenderLock(PlayerNameHash, Pair.ServerUuid);
+        if (renderLockServerUuid != Pair.ServerUuid && renderLockServerUuid != Guid.Empty)
         {
+            var existingServer = _serverConfigManager.GetServerByUuid(renderLockServerUuid);
             Logger.LogInformation(
-                "Cannot apply character data to {Player} from server {NewServerIndex} ({NewServerName}): server {ExistingServerIndex} ({ExistingServerName}) already syncs this target",
+                "Cannot apply character data to {Player} from server {NewServer} ({NewServerName}): server {ExistingServer} ({ExistingServerName}) already syncs this target",
                 PlayerName,
-                Pair.ServerIndex,
+                Pair.ServerUuid,
                 _serverInfo.ServerName,
-                renderLockServerIndex,
-                _serverConfigManager.GetServerByIndex(renderLockServerIndex).ServerName);
+                renderLockServerUuid,
+                existingServer.ServerName);
             return;
         }
 
@@ -247,7 +249,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         try
         {
             Guid applicationId = Guid.NewGuid();
-            _concurrentPairLockService.ReleaseRenderLock(PlayerNameHash, Pair.ServerIndex);
+            _concurrentPairLockService.ReleaseRenderLock(PlayerNameHash, Pair.ServerUuid);
             _applicationCancellationTokenSource?.CancelDispose();
             _applicationCancellationTokenSource = null;
             _downloadCancellationTokenSource?.CancelDispose();
@@ -428,7 +430,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
 
                 Mediator.Publish(new EventMessage(new Event(PlayerName, Pair.UserData, GetType().Name, EventSeverity.Informational,
                     $"Starting download for {toDownloadReplacements.Count} files")));
-                var toDownloadFiles = await _downloadManager.InitiateDownloadList(Pair.ServerIndex, _charaHandler!, toDownloadReplacements, downloadToken).ConfigureAwait(false);
+                var toDownloadFiles = await _downloadManager.InitiateDownloadList(Pair.ServerUuid, _charaHandler!, toDownloadReplacements, downloadToken).ConfigureAwait(false);
 
                 if (!_playerPerformanceService.ComputeAndAutoPauseOnVRAMUsageThresholds(this, charaData, toDownloadFiles))
                 {
@@ -436,7 +438,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
                     return;
                 }
 
-                _pairDownloadTask = Task.Run(async () => await _downloadManager.DownloadFiles(Pair.ServerIndex, _charaHandler!, toDownloadReplacements, downloadToken).ConfigureAwait(false));
+                _pairDownloadTask = Task.Run(async () => await _downloadManager.DownloadFiles(Pair.ServerUuid, _charaHandler!, toDownloadReplacements, downloadToken).ConfigureAwait(false));
 
                 await _pairDownloadTask.ConfigureAwait(false);
 
@@ -589,7 +591,7 @@ public sealed class PairHandler : DisposableMediatorSubscriberBase
         PlayerName = name;
         _charaHandler = _gameObjectHandlerFactory.Create(ObjectKind.Player, () => _dalamudUtil.GetPlayerCharacterFromCachedTableByIdent(Pair.Ident), isWatched: false).GetAwaiter().GetResult();
 
-        _serverConfigManager.AutoPopulateNoteForUid(Pair.ServerIndex, Pair.UserData.UID, name);
+        _serverConfigManager.AutoPopulateNoteForUid(Pair.ServerUuid, Pair.UserData.UID, name);
 
         Mediator.Subscribe<HonorificReadyMessage>(this, async (_) =>
         {

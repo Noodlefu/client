@@ -37,7 +37,7 @@ public class EditProfileUi : WindowMediatorSubscriberBase
     private byte[] _profileImage = [];
     private bool _showFileDialogError = false;
     private bool _wasOpen;
-    private int _serverForProfile = 0;
+    private Guid _serverForProfile;
 
 
     public EditProfileUi(ILogger<EditProfileUi> logger, SyncMediator mediator,
@@ -57,14 +57,14 @@ public class EditProfileUi : WindowMediatorSubscriberBase
         _profileManager = profileManager;
         _serverManager = serverManager;
 
-        _serverSelector = new ServerSelectorSmall(index => _serverForProfile = index);
+        _serverSelector = new ServerSelectorSmall(serverUuid => _serverForProfile = serverUuid);
+        _serverForProfile = _apiController.ConnectedServerUuids.FirstOrDefault();
 
         Mediator.Subscribe<GposeStartMessage>(this, (_) => { _wasOpen = IsOpen; IsOpen = false; });
         Mediator.Subscribe<GposeEndMessage>(this, (_) => IsOpen = _wasOpen);
         Mediator.Subscribe<DisconnectedMessage>(this, (_) =>
         {
-            // Only close if we have nothing left to edit for. The selector will auto-swap to the next available server.
-            if (_apiController.ConnectedServerIndexes.Length <= 0)
+            if (_apiController.ConnectedServerUuids.Length <= 0)
             {
                 IsOpen = false;
             }
@@ -83,10 +83,9 @@ public class EditProfileUi : WindowMediatorSubscriberBase
     protected override void DrawInternal()
     {
         var spacing = ImGui.GetStyle().ItemSpacing.X;
-        _serverSelector.Draw(_serverManager.GetServerNames(), _apiController.ConnectedServerIndexes, windowWidth - spacing);
+        _serverSelector.Draw(_serverManager.GetServerInfo(), _apiController.ConnectedServerUuids, windowWidth - spacing);
         _uiSharedService.BigText("Current Profile (as saved on server)");
 
-        // We draw the profile editor for the current server only
         var loggedInUserUID = _apiController.GetUidByServer(_serverForProfile);
         var userData = new ServerBasedUserKey(new UserData(loggedInUserUID), _serverForProfile);
         var profile = _profileManager.GetSyncProfile(userData);

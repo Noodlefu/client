@@ -103,7 +103,7 @@ public partial class SyncHubClient
         await _connection!.InvokeAsync(nameof(UserSetProfile), userDescription).ConfigureAwait(false);
     }
 
-    public async Task UserUpdateDefaultPermissions(DefaultPermissionsDto defaultPermissionsDto)
+    public async Task UserUpdateDefaultPermissions(LaciSynchroni.Common.Dto.DefaultPermissionsDto defaultPermissionsDto)
     {
         CheckConnection();
         await _connection!.InvokeAsync(nameof(UserUpdateDefaultPermissions), defaultPermissionsDto).ConfigureAwait(false);

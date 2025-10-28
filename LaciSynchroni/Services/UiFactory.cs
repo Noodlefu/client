@@ -34,10 +34,10 @@ public class UiFactory
         _performanceCollectorService = performanceCollectorService;
     }
 
-    public SyncshellAdminUI CreateSyncshellAdminUi(GroupFullInfoDto dto, int serverIndex)
+    public SyncshellAdminUI CreateSyncshellAdminUi(GroupFullInfoDto dto, Guid serverUuid)
     {
         return new SyncshellAdminUI(_loggerFactory.CreateLogger<SyncshellAdminUI>(), _syncMediator,
-            _apiController, _uiSharedService, _pairManager, dto, _performanceCollectorService, serverIndex);
+            _apiController, _uiSharedService, _pairManager, dto, _performanceCollectorService, serverUuid);
     }
 
     public StandaloneProfileUi CreateStandaloneProfileUi(Pair pair)

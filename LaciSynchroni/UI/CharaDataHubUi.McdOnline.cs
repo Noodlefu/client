@@ -64,7 +64,7 @@ internal sealed partial class CharaDataHubUi
                     {
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowCircleUp, "Save to Server"))
                         {
-                            _charaDataManager.UploadCharaData(_selectedServerIndex, dataDto.Id);
+                            _charaDataManager.UploadCharaData(_selectedServerUuid, dataDto.Id);
                         }
                         ImGui.SameLine();
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Undo, "Undo all changes"))
@@ -117,7 +117,7 @@ internal sealed partial class CharaDataHubUi
                 {
                     if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowAltCircleUp, "Save all to server"))
                     {
-                        _charaDataManager.UploadAllCharaData(_selectedServerIndex);
+                        _charaDataManager.UploadAllCharaData(_selectedServerUuid);
                     }
                 }
             });
@@ -207,7 +207,7 @@ internal sealed partial class CharaDataHubUi
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.CheckCircle, "Preview Saved Apperance on Self"))
             {
-                _charaDataManager.ApplyDataToSelf(_selectedServerIndex, dataDto);
+                _charaDataManager.ApplyDataToSelf(_selectedServerUuid, dataDto);
             }
         }
         _uiSharedService.DrawHelpText("This will download and apply the saved character data to yourself. Once loaded it will automatically revert itself within 15 seconds." + UiSharedService.TooltipSeparator
@@ -249,9 +249,9 @@ internal sealed partial class CharaDataHubUi
                 UiSharedService.ColorTextWrapped($"{dataDto.MissingFiles.DistinctBy(k => k.HashOrFileSwap).Count()} files to download this character data are missing on the server", ImGuiColors.DalamudRed);
                 ImGui.NewLine();
                 ImGui.SameLine(pos);
-                if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowCircleUp, "Attempt to upload missing files and restore Character Data"))
+                        if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowCircleUp, "Attempt to upload missing files and restore Character Data"))
                 {
-                    _charaDataManager.UploadMissingFiles(_selectedServerIndex, dataDto.Id);
+                            _charaDataManager.UploadMissingFiles(_selectedServerUuid, dataDto.Id);
                 }
             }
         }
@@ -392,9 +392,9 @@ internal sealed partial class CharaDataHubUi
 
         using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
         {
-            if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Delete Character Data"))
+                if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Delete Character Data"))
             {
-                _ = _charaDataManager.DeleteCharaData(_selectedServerIndex, dataDto);
+                    _ = _charaDataManager.DeleteCharaData(_selectedServerUuid, dataDto);
                 SelectedDtoId = string.Empty;
             }
         }
@@ -562,27 +562,24 @@ internal sealed partial class CharaDataHubUi
 
     private void DrawMcdOnline()
     {
-        if (_apiController.ConnectedServerIndexes.Any())
+        if (!_apiController.ConnectedServerUuids.Any())
         {
-            var serverName = _apiController.GetServerNameByIndex(_selectedServerIndex);
-            _uiSharedService.BigText($"{serverName} Character Data Online");
+            UiSharedService.ColorTextWrapped("Connect to a server to use Mcd Online features", ImGuiColors.DalamudYellow);
+            return;
         }
-        else
+
+        if (!_apiController.ConnectedServerUuids.Contains(_selectedServerUuid))
         {
-            _uiSharedService.BigText("Character Data Online");
+            _selectedServerUuid = _apiController.ConnectedServerUuids.FirstOrDefault();
         }
+
+        var serverName = _apiController.GetServerName(_selectedServerUuid);
+        _uiSharedService.BigText($"{serverName} Character Data Online");
 
         DrawHelpFoldout("In this tab you can create, view and edit your own Laci Synchroni Character Data that is stored on the server." + Environment.NewLine + Environment.NewLine
             + "Laci Character Data Online functions similar to the previous MCDF standard for exporting your character, except that you do not have to send a file to the other person but solely a code." + Environment.NewLine + Environment.NewLine
             + "There would be a bit too much to explain here on what you can do here in its entirety, however, all elements in this tab have help texts attached what they are used for. Please review them carefully." + Environment.NewLine + Environment.NewLine
             + "Be mindful that when you share your Character Data with other people there is a chance that, with the help of unsanctioned 3rd party plugins, your appearance could be stolen irreversibly, just like when using MCDF.");
-
-        if(!_apiController.ConnectedServerIndexes.Any())
-        {
-            ImGuiHelpers.ScaledDummy(5);
-            UiSharedService.DrawGroupedCenteredColorText("No server is currently connected, please connect to a server to use Character Data Online.", ImGuiColors.DalamudYellow);
-            return;
-        }
 
         if (_apiController.AnyServerConnecting)
         {
@@ -762,7 +759,7 @@ internal sealed partial class CharaDataHubUi
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "New Character Data Entry"))
             {
-                _charaDataManager.CreateCharaDataEntry(_selectedServerIndex, _closalCts.Token);
+                _charaDataManager.CreateCharaDataEntry(_selectedServerUuid, _closalCts.Token);
                 _selectNewEntry = true;
             }
         }
@@ -907,7 +904,7 @@ internal sealed partial class CharaDataHubUi
                     using (ImRaii.Group())
                     {
                         InputComboHybrid("##GroupAliasToAdd", "##GroupAliasToAddPicker", ref _specificGroupAdd, _pairManager.Groups.Keys,
-                            group => (group.GroupData.GID, group.GroupData.Alias, group.GroupData.AliasOrGID, _serverConfigurationManager.GetNoteForGid(_selectedServerIndex, group.GroupData.GID)));
+                            group => (group.GroupData.GID, group.GroupData.Alias, group.GroupData.AliasOrGID, _serverConfigurationManager.GetNoteForGid(_selectedServerUuid, group.GroupData.GID)));
                         ImGui.SameLine();
                         using (ImRaii.Disabled(string.IsNullOrEmpty(_specificGroupAdd)
                             || updateDto.GroupList.Any(f => string.Equals(f.GID, _specificGroupAdd, StringComparison.Ordinal) || string.Equals(f.Alias, _specificGroupAdd, StringComparison.Ordinal))))

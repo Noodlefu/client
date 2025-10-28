@@ -1,10 +1,11 @@
-﻿using LaciSynchroni.Common.Dto.Files;
+﻿using System;
+using LaciSynchroni.Common.Dto.Files;
 
 namespace LaciSynchroni.WebAPI.Files.Models;
 
 public class DownloadFileTransfer : FileTransfer
 {
-    public DownloadFileTransfer(DownloadFileDto dto, int serverIndex) : base(dto, serverIndex)
+    public DownloadFileTransfer(DownloadFileDto dto, Guid serverUuid) : base(dto, serverUuid)
     {
     }
 

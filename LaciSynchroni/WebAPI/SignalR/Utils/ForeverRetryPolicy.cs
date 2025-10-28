@@ -7,13 +7,13 @@ namespace LaciSynchroni.WebAPI.SignalR.Utils;
 public class ForeverRetryPolicy : IRetryPolicy
 {
     private readonly SyncMediator _mediator;
-    private readonly int _serverIndex;
+    private readonly Guid _serverUuid;
     private bool _sentDisconnected = false;
 
-    public ForeverRetryPolicy(SyncMediator mediator, int serverIndex)
+    public ForeverRetryPolicy(SyncMediator mediator, Guid serverUuid)
     {
         _mediator = mediator;
-        _serverIndex = serverIndex;
+        _serverUuid = serverUuid;
     }
 
     public TimeSpan? NextRetryDelay(RetryContext retryContext)
@@ -31,7 +31,7 @@ public class ForeverRetryPolicy : IRetryPolicy
             if (!_sentDisconnected)
             {
                 _mediator.Publish(new NotificationMessage("Connection lost", "Connection lost to server", NotificationType.Warning, TimeSpan.FromSeconds(10)));
-                _mediator.Publish(new DisconnectedMessage(_serverIndex));
+                _mediator.Publish(new DisconnectedMessage(_serverUuid));
             }
             _sentDisconnected = true;
         }

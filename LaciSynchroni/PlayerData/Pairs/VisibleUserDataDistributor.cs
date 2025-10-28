@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.Common.Data;
+﻿using System;
+using LaciSynchroni.Common.Data;
 using LaciSynchroni.Services;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Utils;
@@ -46,10 +47,10 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
             }
         });
 
-        Mediator.Subscribe<ConnectedMessage>(this, (msg) => PushToAllVisibleUsers(false, msg.serverIndex));
+        Mediator.Subscribe<ConnectedMessage>(this, (msg) => PushToAllVisibleUsers(false, msg.ServerUuid));
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            _previouslyVisiblePlayers.RemoveAll(key => key.ServerIndex == msg.ServerIndex);
+            _previouslyVisiblePlayers.RemoveAll(key => key.ServerUuid == msg.ServerUuid);
         });
     }
 
@@ -64,11 +65,11 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         base.Dispose(disposing);
     }
 
-    private void PushToAllVisibleUsers(bool forced = false, int? serverIndex = null)
+    private void PushToAllVisibleUsers(bool forced = false, Guid? serverUuid = null)
     {
-        if (serverIndex != null)
+        if (serverUuid != null)
         {
-            foreach (var user in _pairManager.GetVisibleUsers((int)serverIndex))
+            foreach (var user in _pairManager.GetVisibleUsers(serverUuid.Value))
             {
                 _usersToPushDataTo.Add(user);
             }
@@ -84,9 +85,9 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         if (_usersToPushDataTo.Count > 0)
         {
             Logger.LogDebug("Pushing data {hash} for {count} visible players", _lastCreatedData?.DataHash.Value ?? "UNKNOWN", _usersToPushDataTo.Count);
-            foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+            foreach (var serverUuidToPush in _apiController.ConnectedServerUuids)
             {
-                PushCharacterData(connectedServerIndex, forced);
+                PushCharacterData(serverUuidToPush, forced);
             }
         }
     }
@@ -108,13 +109,13 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
         {
             _usersToPushDataTo.Add(user);
         }
-        foreach (int connectedServerIndex in _apiController.ConnectedServerIndexes)
+        foreach (var serverUuid in _apiController.ConnectedServerUuids)
         {
-            PushCharacterData(connectedServerIndex);
+            PushCharacterData(serverUuid);
         }
     }
 
-    private void PushCharacterData(int serverIndex, bool forced = false)
+    private void PushCharacterData(Guid serverUuid, bool forced = false)
     {
         if (_lastCreatedData == null || _usersToPushDataTo.Count == 0) return;
 
@@ -127,9 +128,8 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
                 _uploadingCharacterData = _lastCreatedData.DeepClone();
                 Logger.LogDebug("Starting UploadTask for {hash}, Reason: TaskIsNull: {task}, TaskIsCompleted: {taskCpl}, Forced: {frc}",
                     _lastCreatedData.DataHash, _fileUploadTask == null, _fileUploadTask?.IsCompleted ?? false, forced);
-                // Right now, the file manager is still single-instance, so we push to "current" independant of the user
                 var usersToPushDataTo = _usersToPushDataTo.Select(key => key.UserData);
-                _fileUploadTask = _fileTransferManager.UploadFiles(serverIndex, _uploadingCharacterData, [.. usersToPushDataTo]);
+                _fileUploadTask = _fileTransferManager.UploadFiles(serverUuid, _uploadingCharacterData, [.. usersToPushDataTo]);
             }
 
             if (_fileUploadTask != null)
@@ -141,16 +141,16 @@ public class VisibleUserDataDistributor : DisposableMediatorSubscriberBase
                     await _pushDataSemaphore.WaitAsync(_runtimeCts.Token).ConfigureAwait(false);
                     if (_usersToPushDataTo.Count == 0) return;
 
-                    var serversToPushTo = _usersToPushDataTo.Select(key => key.ServerIndex).Distinct();
+                    var serversToPushTo = _usersToPushDataTo.Select(key => key.ServerUuid).Distinct();
                     Logger.LogDebug("Pushing to servers: {serversToPushTo}", serversToPushTo);
-                    foreach (int serverIndex in serversToPushTo)
+                    foreach (var targetServerUuid in serversToPushTo)
                     {
-                        Logger.LogDebug("Server {serverIndex}: Pushing {data} to {users}", serverIndex,
+                        Logger.LogDebug("Server {serverUuid}: Pushing {data} to {users}", targetServerUuid,
                             dataToSend.DataHash,
                             string.Join(", ", _usersToPushDataTo.Select(k => k.UserData.AliasOrUID)));
-                        var toPushForServer = _usersToPushDataTo.Where(key => key.ServerIndex == serverIndex)
+                        var toPushForServer = _usersToPushDataTo.Where(key => key.ServerUuid == targetServerUuid)
                             .Select(key => key.UserData);
-                        await _apiController.PushCharacterData(serverIndex, dataToSend, [.. toPushForServer])
+                        await _apiController.PushCharacterData(targetServerUuid, dataToSend, [.. toPushForServer])
                             .ConfigureAwait(false);
                     }
 

@@ -24,7 +24,7 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
     private readonly PairManager _pairManager;
     private bool _errorGroupCreate;
     private GroupJoinDto? _lastCreatedGroup;
-    private int _serverIndexForCreation = 0;
+    private Guid _serverUuidForCreation;
 
     public CreateSyncshellUI(ILogger<CreateSyncshellUI> logger, SyncMediator syncMediator, ApiController apiController, UiSharedService uiSharedService,
         PerformanceCollectorService performanceCollectorService, ServerConfigurationManager serverConfigurationManager, PairManager pairManager)
@@ -34,7 +34,8 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
         _uiSharedService = uiSharedService;
         _serverConfigurationManager = serverConfigurationManager;
         _pairManager = pairManager;
-        _serverSelector = new ServerSelectorSmall(newIndex => _serverIndexForCreation = newIndex);
+        _serverSelector = new ServerSelectorSmall(serverUuid => _serverUuidForCreation = serverUuid);
+        _serverUuidForCreation = _apiController.ConnectedServerUuids.FirstOrDefault();
         SizeConstraints = new()
         {
             MinimumSize = new(550, 350),
@@ -45,8 +46,7 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
 
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            // Only disconnect if we have nothing left to create for. The selector will auto-swap to the next available server.
-            if (_apiController.ConnectedServerIndexes.Length <= 0)
+            if (_apiController.ConnectedServerUuids.Length <= 0)
             {
                 IsOpen = false;
             }
@@ -60,11 +60,11 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
 
         if (_lastCreatedGroup == null)
         {
-            _serverSelector.Draw(_serverConfigurationManager.GetServerNames(), _apiController.ConnectedServerIndexes, 300f);
+            _serverSelector.Draw(_serverConfigurationManager.GetServerInfo(), _apiController.ConnectedServerUuids, 300f);
             UiSharedService.AttachToolTip("Server to create the Syncshell for. Only connected servers can be selected.");
             ImGui.SameLine();
-            var maxGroupsCreateable = _apiController.GetMaxGroupsCreatedByUser(_serverIndexForCreation);
-            var currentUserUid = _apiController.GetUidByServer(_serverIndexForCreation);
+            var maxGroupsCreateable = _apiController.GetMaxGroupsCreatedByUser(_serverUuidForCreation);
+            var currentUserUid = _apiController.GetUidByServer(_serverUuidForCreation);
             using (ImRaii.Disabled(_pairManager.GroupPairs.Select(k => k.Key).Distinct()
                                        .Count(g => string.Equals(g.GroupFullInfo.OwnerUID, currentUserUid,
                                            StringComparison.Ordinal)) >=
@@ -74,7 +74,7 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
                 {
                     try
                     {
-                        _lastCreatedGroup = _apiController.GroupCreate(_serverIndexForCreation).Result;
+                        _lastCreatedGroup = _apiController.GroupCreate(_serverUuidForCreation).Result;
                     }
                     catch
                     {
@@ -90,8 +90,8 @@ public class CreateSyncshellUI : WindowMediatorSubscriberBase
 
         if (_lastCreatedGroup == null)
         {
-            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(_serverIndexForCreation);
-            var serverInfo = _apiController.GetServerInfoForServer(_serverIndexForCreation);
+            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(_serverUuidForCreation);
+            var serverInfo = _apiController.GetServerInfoForServer(_serverUuidForCreation);
             UiSharedService.TextWrapped("Creating a new Syncshell will create it with your current preferred permissions for Syncshells as default suggested permissions." + Environment.NewLine +
                 "- You can own up to " + serverInfo?.MaxGroupsCreatedByUser + " Syncshells on this server." + Environment.NewLine +
                 "- You can join up to " + serverInfo?.MaxGroupsJoinedByUser + " Syncshells on this server (including your own)" + Environment.NewLine +

@@ -76,10 +76,20 @@ public partial class SyncHubClient : IServerHub
         return await _connection!.InvokeAsync<GroupJoinInfoDto>(nameof(GroupJoin), passwordedGroup).ConfigureAwait(false);
     }
 
+    public async Task<GroupJoinInfoDto> GroupJoinForServer(GroupPasswordDto passwordedGroup)
+    {
+        return await GroupJoin(passwordedGroup).ConfigureAwait(false);
+    }
+
     public async Task<bool> GroupJoinFinalize(GroupJoinDto passwordedGroup)
     {
         CheckConnection();
         return await _connection!.InvokeAsync<bool>(nameof(GroupJoinFinalize), passwordedGroup).ConfigureAwait(false);
+    }
+
+    public async Task<bool> GroupJoinFinalizeForServer(GroupJoinDto passwordedGroup)
+    {
+        return await GroupJoinFinalize(passwordedGroup).ConfigureAwait(false);
     }
 
     public async Task GroupLeave(GroupDto group)

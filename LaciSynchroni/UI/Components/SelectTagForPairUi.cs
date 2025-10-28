@@ -58,7 +58,7 @@ public class SelectTagForPairUi
 
         if (ImGui.BeginPopup(popupName))
         {
-            var tags = _tagHandler.GetAllTagsForServerSorted(_pair.ServerIndex);
+            var tags = _tagHandler.GetAllTagsForServerSorted(_pair.ServerUuid);
             var childHeight = tags.Count != 0 ? tags.Count * 25 : 1;
             var childSize = new Vector2(0, childHeight > 100 ? 100 : childHeight) * ImGuiHelpers.GlobalScale;
 
@@ -100,17 +100,17 @@ public class SelectTagForPairUi
 
     private void DrawGroupName(Pair pair, string name)
     {
-        var hasTagBefore = _tagHandler.HasTag(pair.ServerIndex, pair.UserData.UID, name);
+        var hasTagBefore = _tagHandler.HasTag(_pair.ServerUuid, _pair.UserData.UID, name);
         var hasTag = hasTagBefore;
         if (ImGui.Checkbox(name, ref hasTag))
         {
             if (hasTag)
             {
-                _tagHandler.AddTagToPairedUid(pair.ServerIndex, pair.UserData.UID, name);
+                _tagHandler.AddTagToPairedUid(_pair.ServerUuid, _pair.UserData.UID, name);
             }
             else
             {
-                _tagHandler.RemoveTagFromPairedUid(pair.ServerIndex, pair.UserData.UID, name);
+                _tagHandler.RemoveTagFromPairedUid(_pair.ServerUuid, _pair.UserData.UID, name);
             }
         }
     }
@@ -119,8 +119,8 @@ public class SelectTagForPairUi
     {
         if (!_tagNameToAdd.IsNullOrWhitespace() && _tagNameToAdd is not (TagHandler.CustomOfflineTag or TagHandler.CustomOnlineTag or TagHandler.CustomVisibleTag))
         {
-            _tagHandler.AddTag(pair.ServerIndex, _tagNameToAdd);
-            _tagHandler.AddTagToPairedUid(pair.ServerIndex, pair.UserData.UID, _tagNameToAdd);
+            _tagHandler.AddTag(_pair.ServerUuid, _tagNameToAdd);
+            _tagHandler.AddTagToPairedUid(_pair.ServerUuid, _pair.UserData.UID, _tagNameToAdd);
             _tagNameToAdd = string.Empty;
         }
         else

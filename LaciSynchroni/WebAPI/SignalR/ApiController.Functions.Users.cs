@@ -1,62 +1,58 @@
-﻿using LaciSynchroni.Common.Data;
-using LaciSynchroni.Common.Dto;
+﻿using System;
+using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Dto.User;
 
 namespace LaciSynchroni.WebAPI;
-using ServerIndex = int;
 
-#pragma warning disable MA0040
-public partial class ApiController
+public sealed partial class ApiController
 {
-    
-    public async Task PushCharacterData(ServerIndex serverIndex, CharacterData data, List<UserData> visibleCharacters)
+    public async Task PushCharacterData(Guid serverUuid, CharacterData data, List<UserData> visibleCharacters)
     {
-        await GetClientForServer(serverIndex)!.PushCharacterData(data, visibleCharacters).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.PushCharacterData(data, visibleCharacters).ConfigureAwait(false);
     }
 
-    public Task UserAddPairToServer(ServerIndex serverIndex, string pairToAdd)
+    public Task UserAddPairToServer(Guid serverUuid, string pairToAdd)
     {
-        return UserAddPair(serverIndex, new(new(pairToAdd)));
+        return UserAddPair(serverUuid, new(new(pairToAdd)));
     }
 
-    public async Task UserAddPair(ServerIndex serverIndex, UserDto user)
+    public async Task UserAddPair(Guid serverUuid, UserDto user)
     {
-        await GetClientForServer(serverIndex)!.UserAddPair(user).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserAddPair(user).ConfigureAwait(false);
     }
 
-    public async Task UserDelete(ServerIndex serverIndex)
+    public async Task UserDelete(Guid serverUuid)
     {
-        await GetClientForServer(serverIndex)!.UserDelete().ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserDelete().ConfigureAwait(false);
     }
 
-    public async Task<UserProfileDto> UserGetProfile(ServerIndex serverIndex, UserDto dto)
+    public async Task<UserProfileDto> UserGetProfile(Guid serverUuid, UserDto dto)
     {
-        return await GetClientForServer(serverIndex)!.UserGetProfile(dto).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.UserGetProfile(dto).ConfigureAwait(false);
     }
 
-    public async Task SetBulkPermissions(ServerIndex serverIndex, BulkPermissionsDto dto)
+    public async Task SetBulkPermissions(Guid serverUuid, BulkPermissionsDto dto)
     {
-        await GetClientForServer(serverIndex)!.SetBulkPermissions(dto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.SetBulkPermissions(dto).ConfigureAwait(false);
     }
 
-    public async Task UserRemovePair(ServerIndex serverIndex, UserDto userDto)
+    public async Task UserRemovePair(Guid serverUuid, UserDto userDto)
     {
-        await GetClientForServer(serverIndex)!.UserRemovePair(userDto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserRemovePair(userDto).ConfigureAwait(false);
     }
 
-    public async Task UserSetPairPermissions(ServerIndex serverIndex, UserPermissionsDto userPermissions)
+    public async Task UserSetPairPermissions(Guid serverUuid, UserPermissionsDto userPermissions)
     {
-        await GetClientForServer(serverIndex)!.UserSetPairPermissions(userPermissions).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserSetPairPermissions(userPermissions).ConfigureAwait(false);
     }
 
-    public async Task UserSetProfile(ServerIndex serverIndex, UserProfileDto userDescription)
+    public async Task UserSetProfile(Guid serverUuid, UserProfileDto userDescription)
     {
-        await GetClientForServer(serverIndex)!.UserSetProfile(userDescription).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserSetProfile(userDescription).ConfigureAwait(false);
     }
 
-    public async Task UserUpdateDefaultPermissions(ServerIndex serverIndex, DefaultPermissionsDto defaultPermissionsDto)
+    public async Task UserUpdateDefaultPermissions(Guid serverUuid, LaciSynchroni.Common.Dto.DefaultPermissionsDto defaultPermissionsDto)
     {
-        await GetClientForServer(serverIndex)!.UserUpdateDefaultPermissions(defaultPermissionsDto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.UserUpdateDefaultPermissions(defaultPermissionsDto).ConfigureAwait(false);
     }
 }
-#pragma warning restore MA0040

@@ -136,7 +136,7 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
         using (ImRaii.Disabled(!hasChanges))
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Save, "Save"))
             {
-                _ = _apiController.SetBulkPermissions(Pair.ServerIndex, new(
+                _ = _apiController.SetBulkPermissions(Pair.ServerUuid, new(
                     new(StringComparer.Ordinal)
                     {
                         { Pair.UserData.UID, _ownPermissions }
@@ -162,13 +162,13 @@ public class PermissionWindowUI : WindowMediatorSubscriberBase
         ImGui.SameLine();
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowsSpin, "Reset to Default"))
         {
-            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(Pair.ServerIndex)!;
+            var defaultPermissions = _apiController.GetDefaultPermissionsForServer(Pair.ServerUuid)!;
             _ownPermissions.SetSticky(Pair.IsDirectlyPaired || defaultPermissions.IndividualIsSticky);
             _ownPermissions.SetPaused(false);
             _ownPermissions.SetDisableVFX(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualVFX : defaultPermissions.DisableGroupVFX);
             _ownPermissions.SetDisableSounds(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualSounds : defaultPermissions.DisableGroupSounds);
             _ownPermissions.SetDisableAnimations(Pair.IsDirectlyPaired ? defaultPermissions.DisableIndividualAnimations : defaultPermissions.DisableGroupAnimations);
-            _ = _apiController.SetBulkPermissions(Pair.ServerIndex, new(
+            _ = _apiController.SetBulkPermissions(Pair.ServerUuid, new(
                 new(StringComparer.Ordinal)
                 {
                     { Pair.UserData.UID, _ownPermissions }

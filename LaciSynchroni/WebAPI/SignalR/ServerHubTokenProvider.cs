@@ -18,19 +18,19 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
     private readonly ServerConfigurationManager _serverManager;
     private readonly HttpClient _httpClient;
     private readonly ILogger<ServerHubTokenProvider> _logger;
-    private readonly int _serverIndex;
+    private readonly Guid _serverUuid;
     private readonly ConcurrentDictionary<JwtIdentifier, string> _tokenCache = new();
 
-    private ServerStorage ServerToUse => _serverManager.GetServerByIndex(_serverIndex);
+    private ServerStorage ServerToUse => _serverManager.GetServerByUuid(_serverUuid);
 
-    public ServerHubTokenProvider(ILogger<ServerHubTokenProvider> logger, int serverIndex,
+    public ServerHubTokenProvider(ILogger<ServerHubTokenProvider> logger, Guid serverUuid,
         ServerConfigurationManager serverManager, DalamudUtilService dalamudUtil, SyncMediator syncMediator,
         HttpClient httpClient)
     {
         _logger = logger;
         _dalamudUtil = dalamudUtil;
         _serverManager = serverManager;
-        _serverIndex = serverIndex;
+        _serverUuid = serverUuid;
         Mediator = syncMediator;
         _httpClient = httpClient;
         Mediator.Subscribe<DalamudLogoutMessage>(this, (_) =>
@@ -71,7 +71,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                     tokenUri = AuthRoutes.AuthFullPath(new Uri(ServerToUse.GetAuthServerUri()
                         .Replace("wss://", "https://", StringComparison.OrdinalIgnoreCase)
                         .Replace("ws://", "http://", StringComparison.OrdinalIgnoreCase)));
-                    var secretKey = _serverManager.GetSecretKey(out _, _serverIndex)!;
+                    var secretKey = _serverManager.GetSecretKey(_serverUuid, out _)!;
                     var auth = secretKey.GetHash256();
                     _logger.LogInformation("Sending SecretKey Request to server with auth {auth}",
                         string.Join("", identifier.SecretKeyOrOAuth.Take(10)));
@@ -131,7 +131,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
                     Mediator.Publish(new NotificationMessage("Error generating token",
                         $"Your authentication token could not be generated. Check {_dalamudUtil.GetPluginName()} Main UI ({CommandManagerService.CommandName} in chat) to see the error message.",
                         NotificationType.Error));
-                Mediator.Publish(new DisconnectedMessage(_serverIndex));
+                Mediator.Publish(new DisconnectedMessage(_serverUuid));
                 throw new SyncAuthFailureException(response);
             }
 
@@ -179,7 +179,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
 
             if (ServerToUse.UseOAuth2)
             {
-                var (OAuthToken, UID) = _serverManager.GetOAuth2(out _, _serverIndex)
+                var (OAuthToken, UID) = _serverManager.GetOAuth2(_serverUuid, out _)
                                         ?? throw new InvalidOperationException("Requested OAuth2 but received null");
 
                 jwtIdentifier = new(ServerToUse.ServerUri,
@@ -188,7 +188,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
             }
             else
             {
-                var secretKey = _serverManager.GetSecretKey(out _, _serverIndex) ??
+                var secretKey = _serverManager.GetSecretKey(_serverUuid, out _) ??
                                 throw new InvalidOperationException("Requested SecretKey but received null");
 
                 jwtIdentifier = new(ServerToUse.ServerUri,
@@ -261,7 +261,7 @@ public sealed class ServerHubTokenProvider : IDisposable, IMediatorSubscriber
 
     public async Task<bool> TryUpdateOAuth2LoginTokenAsync(ServerStorage currentServer, bool forced = false)
     {
-        var oauth2 = _serverManager.GetOAuth2(out _, _serverIndex);
+        var oauth2 = _serverManager.GetOAuth2(_serverUuid, out _);
         if (oauth2 == null) return false;
 
         var handler = new JwtSecurityTokenHandler();

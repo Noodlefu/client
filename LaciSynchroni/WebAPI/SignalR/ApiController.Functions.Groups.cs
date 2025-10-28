@@ -1,103 +1,102 @@
-﻿using LaciSynchroni.Common.Dto.Group;
+﻿using System;
+using LaciSynchroni.Common.Dto.Group;
 
 namespace LaciSynchroni.WebAPI;
-using ServerIndex = int;
 
-public partial class ApiController
+public sealed partial class ApiController
 {
-    public async Task GroupBanUser(ServerIndex serverIndex, GroupPairDto dto, string reason)
+    public async Task GroupBanUser(Guid serverUuid, GroupPairDto dto, string reason)
     {
-        await GetClientForServer(serverIndex)!.GroupBanUser(dto, reason).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupBanUser(dto, reason).ConfigureAwait(false);
     }
 
-    public async Task GroupChangeGroupPermissionState(ServerIndex serverIndex, GroupPermissionDto dto)
+    public async Task GroupChangeGroupPermissionState(Guid serverUuid, GroupPermissionDto dto)
     {
-        await GetClientForServer(serverIndex)!.GroupChangeGroupPermissionState(dto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupChangeGroupPermissionState(dto).ConfigureAwait(false);
     }
 
-    public async Task GroupChangeIndividualPermissionState(ServerIndex serverIndex, GroupPairUserPermissionDto dto)
+    public async Task GroupChangeIndividualPermissionState(Guid serverUuid, GroupPairUserPermissionDto dto)
     {
-        await GetClientForServer(serverIndex)!.GroupChangeIndividualPermissionState(dto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupChangeIndividualPermissionState(dto).ConfigureAwait(false);
     }
 
-    public async Task GroupChangeOwnership(ServerIndex serverIndex, GroupPairDto groupPair)
+    public async Task GroupChangeOwnership(Guid serverUuid, GroupPairDto groupPair)
     {
-        await GetClientForServer(serverIndex)!.GroupChangeOwnership(groupPair).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupChangeOwnership(groupPair).ConfigureAwait(false);
     }
 
-    public async Task<bool> GroupChangePassword(ServerIndex serverIndex, GroupPasswordDto groupPassword)
+    public async Task<bool> GroupChangePassword(Guid serverUuid, GroupPasswordDto groupPassword)
     {
-        return await GetClientForServer(serverIndex)!.GroupChangePassword(groupPassword).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupChangePassword(groupPassword).ConfigureAwait(false);
     }
 
-    public async Task GroupClear(ServerIndex serverIndex, GroupDto group)
+    public async Task GroupClear(Guid serverUuid, GroupDto group)
     {
-        await GetClientForServer(serverIndex)!.GroupClear(group).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupClear(group).ConfigureAwait(false);
     }
 
-    public async Task<GroupJoinDto> GroupCreate(ServerIndex serverIndex)
+    public async Task<GroupJoinDto> GroupCreate(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.GroupCreate().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupCreate().ConfigureAwait(false);
     }
 
-    public async Task<List<string>> GroupCreateTempInvite(ServerIndex serverIndex, GroupDto group, int amount)
+    public async Task<List<string>> GroupCreateTempInvite(Guid serverUuid, GroupDto group, int amount)
     {
-        return await GetClientForServer(serverIndex)!.GroupCreateTempInvite(group, amount).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupCreateTempInvite(group, amount).ConfigureAwait(false);
     }
 
-    public async Task GroupDelete(ServerIndex serverIndex, GroupDto group)
+    public async Task GroupDelete(Guid serverUuid, GroupDto group)
     {
-        await GetClientForServer(serverIndex)!.GroupDelete(group).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupDelete(group).ConfigureAwait(false);
     }
 
-    public async Task<List<BannedGroupUserDto>> GroupGetBannedUsers(ServerIndex serverIndex, GroupDto group)
+    public async Task<List<BannedGroupUserDto>> GroupGetBannedUsers(Guid serverUuid, GroupDto group)
     {
-        return await GetClientForServer(serverIndex)!.GroupGetBannedUsers(group).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupGetBannedUsers(group).ConfigureAwait(false);
     }
 
-    public Task<GroupJoinInfoDto> GroupJoinForServer(ServerIndex serverIndex, GroupPasswordDto passwordedGroup)
+    public Task<GroupJoinInfoDto> GroupJoinForServer(Guid serverUuid, GroupPasswordDto passwordedGroup)
     {
-        return GroupJoin(serverIndex, passwordedGroup);
+        return GetClientForServer(serverUuid)!.GroupJoinForServer(passwordedGroup);
     }
 
-    public async Task<GroupJoinInfoDto> GroupJoin(ServerIndex serverIndex, GroupPasswordDto passwordedGroup)
+    public async Task<GroupJoinInfoDto> GroupJoin(Guid serverUuid, GroupPasswordDto passwordedGroup)
     {
-        return await GetClientForServer(serverIndex)!.GroupJoin(passwordedGroup).ConfigureAwait(false);
-    }
-    
-    public Task<bool> GroupJoinFinalizeForServer(ServerIndex serverIndex, GroupJoinDto passwordedGroup)
-    {
-        return GroupJoinFinalize(serverIndex, passwordedGroup);
+        return await GetClientForServer(serverUuid)!.GroupJoin(passwordedGroup).ConfigureAwait(false);
     }
 
-    public async Task<bool> GroupJoinFinalize(ServerIndex serverIndex, GroupJoinDto passwordedGroup)
+    public Task<bool> GroupJoinFinalizeForServer(Guid serverUuid, GroupJoinDto passwordedGroup)
     {
-        return await GetClientForServer(serverIndex)!.GroupJoinFinalize(passwordedGroup).ConfigureAwait(false);
+        return GetClientForServer(serverUuid)!.GroupJoinFinalizeForServer(passwordedGroup);
     }
 
-    public async Task GroupLeave(ServerIndex serverIndex, GroupDto group)
+    public async Task<bool> GroupJoinFinalize(Guid serverUuid, GroupJoinDto passwordedGroup)
     {
-        await GetClientForServer(serverIndex)!.GroupLeave(group).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupJoinFinalize(passwordedGroup).ConfigureAwait(false);
     }
 
-    public async Task GroupRemoveUser(ServerIndex serverIndex, GroupPairDto groupPair)
+    public async Task GroupLeave(Guid serverUuid, GroupDto group)
     {
-        await GetClientForServer(serverIndex)!.GroupRemoveUser(groupPair).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupLeave(group).ConfigureAwait(false);
     }
 
-    public async Task GroupSetUserInfo(ServerIndex serverIndex, GroupPairUserInfoDto groupPair)
+    public async Task GroupRemoveUser(Guid serverUuid, GroupPairDto groupPair)
     {
-        await GetClientForServer(serverIndex)!.GroupSetUserInfo(groupPair).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupRemoveUser(groupPair).ConfigureAwait(false);
     }
 
-    public async Task<int> GroupPrune(ServerIndex serverIndex, GroupDto group, int days, bool execute)
+    public async Task GroupSetUserInfo(Guid serverUuid, GroupPairUserInfoDto groupPair)
     {
-        return await GetClientForServer(serverIndex)!.GroupPrune(group, days, execute).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GroupSetUserInfo(groupPair).ConfigureAwait(false);
     }
 
-
-    public async Task GroupUnbanUser(ServerIndex serverIndex, GroupPairDto groupPair)
+    public async Task<int> GroupPrune(Guid serverUuid, GroupDto group, int days, bool execute)
     {
-        await GetClientForServer(serverIndex)!.GroupUnbanUser(groupPair).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GroupPrune(group, days, execute).ConfigureAwait(false);
+    }
+
+    public async Task GroupUnbanUser(Guid serverUuid, GroupPairDto groupPair)
+    {
+        await GetClientForServer(serverUuid)!.GroupUnbanUser(groupPair).ConfigureAwait(false);
     }
 }

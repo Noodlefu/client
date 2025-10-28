@@ -68,7 +68,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
     private Task<List<string>?>? _downloadServersTask = null;
     private Task<List<string>?>? _speedTestTask = null;
     private CancellationTokenSource? _speedTestCts;
-    private int _lastSelectedServerIndex = 0;
+    private Guid _lastSelectedServerUuid = Guid.Empty;
     private string _lastSelectedServerName = string.Empty;
     private Task<(bool Success, bool PartialSuccess, string Result)>? _secretKeysConversionTask = null;
     private CancellationTokenSource _secretKeysConversionCts = new CancellationTokenSource();
@@ -430,7 +430,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
             Stopwatch? st = null;
             try
             {
-                result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(new Uri(server), "speedtest/run"), token, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerUuid, HttpMethod.Get, new Uri(new Uri(server), "speedtest/run"), token, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
                 result.EnsureSuccessStatusCode();
                 using CancellationTokenSource speedtestTimeCts = new();
                 speedtestTimeCts.CancelAfter(TimeSpan.FromSeconds(10));
@@ -483,12 +483,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
         return speedTestResults;
     }
 
-    private async Task<List<string>?> GetDownloadServerList(int serverIndex)
+    private async Task<List<string>?> GetDownloadServerList(Guid serverUuid)
     {
         try
         {
-            var uri = _fileTransferOrchestrator.GetFileCdnUri(serverIndex);
-            var result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerIndex, HttpMethod.Get, new Uri(uri!, "files/downloadServers"), CancellationToken.None).ConfigureAwait(false);
+            var uri = _fileTransferOrchestrator.GetFileCdnUri(serverUuid);
+            var result = await _fileTransferOrchestrator.SendRequestAsync(_lastSelectedServerUuid, HttpMethod.Get, new Uri(uri!, "files/downloadServers"), CancellationToken.None).ConfigureAwait(false);
             result.EnsureSuccessStatusCode();
             return await JsonSerializer.DeserializeAsync<List<string>>(await result.Content.ReadAsStreamAsync().ConfigureAwait(false)).ConfigureAwait(false);
         }
@@ -775,7 +775,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
         {
             _notesSuccessfullyApplied = null;
             var notes = ImGui.GetClipboardText();
-            _notesSuccessfullyApplied = _uiShared.ApplyNotesFromClipboard(_lastSelectedServerIndex, notes, _overwriteExistingLabels);
+            _notesSuccessfullyApplied = _uiShared.ApplyNotesFromClipboard(_lastSelectedServerUuid, notes, _overwriteExistingLabels);
         }
 
         ImGui.SameLine();
@@ -1234,7 +1234,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         ImGuiHelpers.ScaledDummy(new Vector2(10, 10));
 
-        var selectedServer = _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex);
+        var selectedServer = _serverConfigurationManager.GetServerByUuid(_lastSelectedServerUuid);
         bool useOauth = selectedServer.UseOAuth2;
 
         _uiShared.BigText($"Settings for {_lastSelectedServerName} service");
@@ -1300,10 +1300,10 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 }
 
                 ImGui.SetNextItemWidth(200);
-                var serverTransport = _serverConfigurationManager.GetTransport(_lastSelectedServerIndex);
+                var serverTransport = _serverConfigurationManager.GetTransport(_lastSelectedServerUuid);
                 _uiShared.DrawCombo("Server Transport Type", Enum.GetValues<HttpTransportType>().Where(t => t != HttpTransportType.None),
                     (v) => v.ToString(),
-                    onSelected: (t) => _serverConfigurationManager.SetTransportType(_lastSelectedServerIndex, t),
+                    onSelected: (t) => _serverConfigurationManager.SetTransportType(_lastSelectedServerUuid, t),
                     serverTransport);
                 _uiShared.DrawHelpText("You normally do not need to change this, if you don't know what this is or what it's for, keep it to WebSockets." + Environment.NewLine
                     + "If you run into connection issues with e.g. VPNs, try ServerSentEvents first before trying out LongPolling." + UiSharedService.TooltipSeparator
@@ -1333,7 +1333,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                 _uiShared.DrawHelpText("Use Discord OAuth2 Authentication to identify with this server instead of secret keys");
                 if (useOauth)
                 {
-                    _uiShared.DrawOAuth(_lastSelectedServerIndex, selectedServer);
+                    _uiShared.DrawOAuth(_lastSelectedServerUuid, selectedServer);
                     if (string.IsNullOrEmpty(_serverConfigurationManager.GetDiscordUserFromToken(selectedServer)))
                     {
                         ImGuiHelpers.ScaledDummy(10f);
@@ -1350,7 +1350,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                 ImGui.Separator();
 
-                var isServerConnected = _apiController.IsServerConnected(_lastSelectedServerIndex);
+                var isServerConnected = _apiController.IsServerConnected(_lastSelectedServerUuid);
                 if (isServerConnected)
                 {
                     UiSharedService.ColorTextWrapped($"To delete the {serverName} service you need to disconnect from the service.", ImGuiColors.DalamudYellow);
@@ -1531,7 +1531,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                         if (!useOauth)
                         {
-                            var imGuiId = "Secret Key###" + item.CharacterName + _lastSelectedServerIndex + i;
+                            var imGuiId = "Secret Key###" + item.CharacterName + _lastSelectedServerUuid + i;
                             var comparator = EqualityComparer<KeyValuePair<int, SecretKey>>.Default.Equals(keys.FirstOrDefault(f => f.Key == item.SecretKeyIdx), default) ? keys.First() : keys.First(f => f.Key == item.SecretKeyIdx);
                             _uiShared.DrawCombo(imGuiId, keys, (w) => w.Value.FriendlyName, (w) => ChangeSecretKey(w.Key, item), comparator);
                         }
@@ -1547,7 +1547,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                         }
                         _uiShared.DrawHelpText("When enabled and logging into this character in XIV, Laci will automatically connect to the current service.");
                         if (_uiShared.IconTextButton(FontAwesomeIcon.Trash, "Delete Character") && UiSharedService.CtrlPressed())
-                            _serverConfigurationManager.RemoveCharacterFromServer(_lastSelectedServerIndex, item);
+            _serverConfigurationManager.RemoveCharacterFromServer(_lastSelectedServerUuid, item);
                         UiSharedService.AttachToolTip("Hold CTRL to delete this entry.");
 
                         i++;
@@ -1567,14 +1567,14 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     {
                         if (_uiShared.IconTextButton(FontAwesomeIcon.User, "Add current character"))
                         {
-                            _serverConfigurationManager.AddCurrentCharacterToServer(_lastSelectedServerIndex);
+                _serverConfigurationManager.AddCurrentCharacterToServer(_lastSelectedServerUuid);
                         }
                         ImGui.SameLine();
                     }
 
                     if (_uiShared.IconTextButton(FontAwesomeIcon.Plus, "Add new character"))
                     {
-                        _serverConfigurationManager.AddEmptyCharacterToServer(_lastSelectedServerIndex);
+                    _serverConfigurationManager.AddEmptyCharacterToServer(_lastSelectedServerUuid);
                     }
                 }
                 else
@@ -1636,12 +1636,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
             if (ImGui.BeginTabItem("Permission Settings"))
             {
                 _uiShared.BigText("Default Permission Settings");
-                if (_apiController.IsServerConnected(_lastSelectedServerIndex))
+                if (_apiController.IsServerConnected(_lastSelectedServerUuid))
                 {
                     UiSharedService.TextWrapped("Note: The default permissions settings here are not applied retroactively to existing pairs or joined Syncshells.");
                     UiSharedService.TextWrapped("Note: The default permissions settings here are sent and stored on the connected service.");
                     ImGuiHelpers.ScaledDummy(5f);
-                    var perms = _apiController.GetDefaultPermissionsForServer(_lastSelectedServerIndex)!;
+                    var perms = _apiController.GetDefaultPermissionsForServer(_lastSelectedServerUuid)!;
                     bool individualIsSticky = perms.IndividualIsSticky;
                     bool disableIndividualSounds = perms.DisableIndividualSounds;
                     bool disableIndividualAnimations = perms.DisableIndividualAnimations;
@@ -1649,7 +1649,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     if (ImGui.Checkbox("Individually set permissions become preferred permissions", ref individualIsSticky))
                     {
                         perms.IndividualIsSticky = individualIsSticky;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("The preferred attribute means that the permissions to that user will never change through any of your permission changes to Syncshells " +
                         "(i.e. if you have paused one specific user in a Syncshell and they become preferred permissions, then pause and unpause the same Syncshell, the user will remain paused - " +
@@ -1664,19 +1664,19 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     if (ImGui.Checkbox("Disable individual pair sounds", ref disableIndividualSounds))
                     {
                         perms.DisableIndividualSounds = disableIndividualSounds;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable sound sync for all new individual pairs.");
                     if (ImGui.Checkbox("Disable individual pair animations", ref disableIndividualAnimations))
                     {
                         perms.DisableIndividualAnimations = disableIndividualAnimations;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable animation sync for all new individual pairs.");
                     if (ImGui.Checkbox("Disable individual pair VFX", ref disableIndividualVFX))
                     {
                         perms.DisableIndividualVFX = disableIndividualVFX;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable VFX sync for all new individual pairs.");
                     ImGuiHelpers.ScaledDummy(5f);
@@ -1686,19 +1686,19 @@ public class SettingsUi : WindowMediatorSubscriberBase
                     if (ImGui.Checkbox("Disable Syncshell pair sounds", ref disableGroundSounds))
                     {
                         perms.DisableGroupSounds = disableGroundSounds;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable sound sync for all non-sticky pairs in newly joined syncshells.");
                     if (ImGui.Checkbox("Disable Syncshell pair animations", ref disableGroupAnimations))
                     {
                         perms.DisableGroupAnimations = disableGroupAnimations;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable animation sync for all non-sticky pairs in newly joined syncshells.");
                     if (ImGui.Checkbox("Disable Syncshell pair VFX", ref disableGroupVFX))
                     {
                         perms.DisableGroupVFX = disableGroupVFX;
-                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerIndex, perms);
+                        _ = _apiController.UserUpdateDefaultPermissions(_lastSelectedServerUuid, perms);
                     }
                     _uiShared.DrawHelpText("This setting will disable VFX sync for all non-sticky pairs in newly joined syncshells.");
                 }
@@ -1713,12 +1713,12 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
             if (ImGui.BeginTabItem("Account & Data"))
             {
-                if (_apiController.IsServerConnected(_lastSelectedServerIndex))
+                if (_apiController.IsServerConnected(_lastSelectedServerUuid))
                 {
                     UiSharedService.ColorTextWrapped("For any changes to be applied to a connected service you need to reconnect to the service after your changes.", ImGuiColors.DalamudYellow);
                 }
 
-                if (ApiController.IsServerAlive(_lastSelectedServerIndex))
+                if (ApiController.IsServerAlive(_lastSelectedServerUuid))
                 {
                     _uiShared.BigText($"Service Actions for {_lastSelectedServerName}");
                     ImGuiHelpers.ScaledDummy(new Vector2(5, 5));
@@ -1742,7 +1742,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                         if (ImGui.Button("Delete everything", new Vector2(buttonSize, 0)))
                         {
-                            _ = Task.Run(() => _fileTransferManager.DeleteAllFiles(_lastSelectedServerIndex));
+                            _ = Task.Run(() => _fileTransferManager.DeleteAllFiles(_lastSelectedServerUuid));
                             _deleteFilesPopupModalShown = false;
                         }
 
@@ -1778,7 +1778,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
                         if (ImGui.Button("Delete account", new Vector2(buttonSize, 0)))
                         {
-                            _ = Task.Run(() => ApiController.UserDelete(_lastSelectedServerIndex));
+                            _ = Task.Run(() => ApiController.UserDelete(_lastSelectedServerUuid));
                             _deleteAccountPopupModalShown = false;
                             Mediator.Publish(new SwitchToIntroUiMessage());
                         }
@@ -1825,25 +1825,24 @@ public class SettingsUi : WindowMediatorSubscriberBase
             ImGui.TableSetupColumn($"Connection", ImGuiTableColumnFlags.None, 1);
             ImGui.TableHeadersRow();
 
-            var serverList = _serverConfigurationManager.GetServerInfo();
-            var rowHeight = ImGui.GetTextLineHeightWithSpacing();
+        var rowHeight = ImGui.GetTextLineHeightWithSpacing();
 
-            foreach (var server in serverList)
-            {
+        foreach (var server in _serverConfigurationManager.GetServerInfo())
+        {
                 ImGui.TableNextRow();
-                ImGui.TableSetColumnIndex(0);
+            ImGui.TableSetColumnIndex(0);
 
-                bool isSelected = (_lastSelectedServerIndex == server.Id);
-                ImRaii.PushId(server.Id);
+            bool isSelected = (_lastSelectedServerUuid == server.Id);
+            ImRaii.PushId(server.Id.ToString());
                 if (ImGui.Selectable("##row", isSelected, ImGuiSelectableFlags.SpanAllColumns | ImGuiSelectableFlags.AllowItemOverlap,
                     new Vector2(0, rowHeight)))
                 {
-                    if (_lastSelectedServerIndex != server.Id)
+                if (_lastSelectedServerUuid != server.Id)
                     {
                         _uiShared.ResetOAuthTasksState();
                         _secretKeysConversionCts = _secretKeysConversionCts.CancelRecreate();
                         _secretKeysConversionTask = null;
-                        _lastSelectedServerIndex = server.Id;
+                    _lastSelectedServerUuid = server.Id;
                     }
                 }
                 ImGui.PopID();
@@ -1869,9 +1868,9 @@ public class SettingsUi : WindowMediatorSubscriberBase
         }
     }
 
-    private void DrawServerStatus(int serverId)
+    private void DrawServerStatus(Guid serverId)
     {
-        if (_apiController.ConnectedServerIndexes.Any(p => p == serverId))
+        if (_apiController.ConnectedServerUuids.Any(p => p == serverId))
         {
             UiSharedService.ColorTextWrapped("Online", ImGuiColors.ParsedGreen);
         }
@@ -1879,7 +1878,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
             UiSharedService.ColorTextWrapped("Offline", ImGuiColors.DalamudRed);
     }
 
-    private void DrawMultiServerConnectButton(int serverId, string serverName)
+    private void DrawMultiServerConnectButton(Guid serverId, string serverName)
     {
         bool isConnectingOrConnected = _apiController.IsServerConnected(serverId);
         var color = UiSharedService.GetBoolColor(!isConnectingOrConnected);
@@ -1887,17 +1886,17 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
         using (ImRaii.PushColor(ImGuiCol.Text, color))
         {
-            if (_uiShared.IconButton(connectedIcon, serverId.ToString()))
+            if (_uiShared.IconButton(connectedIcon, serverName))
             {
                 if (_apiController.IsServerConnected(serverId))
                 {
-                    _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex).FullPause = true;
+                    _serverConfigurationManager.GetServerByUuid(_lastSelectedServerUuid).FullPause = true;
                     _serverConfigurationManager.Save();
                     _ = _apiController.PauseConnectionAsync(serverId);
                 }
                 else
                 {
-                    _serverConfigurationManager.GetServerByIndex(_lastSelectedServerIndex).FullPause = false;
+                    _serverConfigurationManager.GetServerByUuid(_lastSelectedServerUuid).FullPause = false;
                     _serverConfigurationManager.Save();
                     _ = _apiController.CreateConnectionsAsync(serverId);
                 }
@@ -1919,13 +1918,13 @@ public class SettingsUi : WindowMediatorSubscriberBase
             {
                 if (_downloadServersTask == null || ((_downloadServersTask?.IsCompleted ?? false) && (!_downloadServersTask?.IsCompletedSuccessfully ?? false)))
                 {
-                    var isServiceConnected = _apiController.IsServerConnected(_lastSelectedServerIndex);
+                    var isServiceConnected = _apiController.IsServerConnected(_lastSelectedServerUuid);
                     using (ImRaii.Disabled(!isServiceConnected))
                     {
                         if (_uiShared.IconTextButton(FontAwesomeIcon.GroupArrowsRotate, "Update Download Server List"))
                         {
                             // Speedtest is always done for current server
-                            _downloadServersTask = GetDownloadServerList(_lastSelectedServerIndex);
+                            _downloadServersTask = GetDownloadServerList(_lastSelectedServerUuid);
                         }
                     }
                     if(!isServiceConnected)
@@ -2051,9 +2050,9 @@ public class SettingsUi : WindowMediatorSubscriberBase
 
     private void DrawSettingsContent()
     {
-        _lastSelectedServerName = _apiController.GetServerNameByIndex(_lastSelectedServerIndex);
+        _lastSelectedServerName = _apiController.GetServerName(_lastSelectedServerUuid);
 
-        if (_apiController.IsServerConnected(_lastSelectedServerIndex))
+        if (_apiController.IsServerConnected(_lastSelectedServerUuid))
         {
             ImGui.TextUnformatted("Service " + _lastSelectedServerName + ":");
             ImGui.SameLine();
@@ -2061,7 +2060,7 @@ public class SettingsUi : WindowMediatorSubscriberBase
             ImGui.SameLine();
             ImGui.TextUnformatted("(");
             ImGui.SameLine();
-            ImGui.TextColored(ImGuiColors.ParsedGreen, _apiController.GetOnlineUsersForServer(_lastSelectedServerIndex).ToString(CultureInfo.InvariantCulture));
+            ImGui.TextColored(ImGuiColors.ParsedGreen, _apiController.GetOnlineUsersForServer(_lastSelectedServerUuid).ToString(CultureInfo.InvariantCulture));
             ImGui.SameLine();
             ImGui.TextUnformatted("Users Online");
             ImGui.SameLine();

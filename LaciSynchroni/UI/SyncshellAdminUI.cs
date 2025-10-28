@@ -21,7 +21,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
     private readonly ApiController _apiController;
     private readonly bool _isModerator = false;
     private readonly bool _isOwner = false;
-    private readonly int _serverIndex;
+    private readonly Guid _serverUuid;
     private readonly string _serverName;
     private readonly List<string> _oneTimeInvites = [];
     private readonly PairManager _pairManager;
@@ -35,20 +35,20 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
     private int _pruneDays = 14;
 
     public SyncshellAdminUI(ILogger<SyncshellAdminUI> logger, SyncMediator mediator, ApiController apiController,
-        UiSharedService uiSharedService, PairManager pairManager, GroupFullInfoDto groupFullInfo, PerformanceCollectorService performanceCollectorService, int serverIndex)
+        UiSharedService uiSharedService, PairManager pairManager, GroupFullInfoDto groupFullInfo, PerformanceCollectorService performanceCollectorService, Guid serverUuid)
         : base(logger, mediator, "###LaciSynchroniMainUI", performanceCollectorService)
     {
         GroupFullInfo = groupFullInfo;
         _apiController = apiController;
         _uiSharedService = uiSharedService;
         _pairManager = pairManager;
-        _isOwner = string.Equals(GroupFullInfo.OwnerUID, _apiController.GetUidByServer(serverIndex), StringComparison.Ordinal);
+        _isOwner = string.Equals(GroupFullInfo.OwnerUID, _apiController.GetUidByServer(serverUuid), StringComparison.Ordinal);
         _isModerator = GroupFullInfo.GroupUserInfo.IsModerator();
         _newPassword = string.Empty;
         _multiInvites = 30;
         _pwChangeSuccess = true;
-        _serverIndex = serverIndex;
-        _serverName = _apiController.GetServerNameByIndex(serverIndex);
+        _serverUuid = serverUuid;
+        _serverName = _apiController.GetServerName(serverUuid);
         IsOpen = true;
         SizeConstraints = new WindowSizeConstraints()
         {
@@ -63,7 +63,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
 
     protected override void DrawInternal()
     {
-        var isServerConnected = _apiController.IsServerConnected(_serverIndex);
+        var isServerConnected = _apiController.IsServerConnected(_serverUuid);
         if (!isServerConnected)
         {
             ImGuiHelpers.ScaledDummy(5);
@@ -73,7 +73,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
 
         if (!_isModerator && !_isOwner) return;
 
-        var key = new ServerBasedGroupKey(GroupFullInfo.Group, _serverIndex);
+        var key = new ServerBasedGroupKey(GroupFullInfo.Group, _serverUuid);
         GroupFullInfo = _pairManager.Groups[key];
 
         using var id = ImRaii.PushId("syncshell_admin_" + GroupFullInfo.GID);
@@ -98,7 +98,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         isInvitesDisabled ? "Unlock Syncshell" : "Lock Syncshell"))
                     {
                         perm.SetDisableInvites(!isInvitesDisabled);
-                        _ = _apiController.GroupChangeGroupPermissionState(_serverIndex, new(GroupFullInfo.Group, perm));
+                        _ = _apiController.GroupChangeGroupPermissionState(_serverUuid, new(GroupFullInfo.Group, perm));
                     }
 
                     ImGuiHelpers.ScaledDummy(2f);
@@ -106,7 +106,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                     UiSharedService.TextWrapped("One-time invites work as single-use passwords. Use those if you do not want to distribute your Syncshell password.");
                     if (_uiSharedService.IconTextButton(FontAwesomeIcon.Envelope, "Single one-time invite"))
                     {
-                        ImGui.SetClipboardText(_apiController.GroupCreateTempInvite(_serverIndex, new(GroupFullInfo.Group), 1).Result.FirstOrDefault() ?? string.Empty);
+                        ImGui.SetClipboardText(_apiController.GroupCreateTempInvite(_serverUuid, new(GroupFullInfo.Group), 1).Result.FirstOrDefault() ?? string.Empty);
                     }
                     UiSharedService.AttachToolTip("Creates a single-use password for joining the syncshell which is valid for 24h and copies it to the clipboard.");
                     ImGui.InputInt("##amountofinvites", ref _multiInvites);
@@ -115,7 +115,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                     {
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Envelope, "Generate " + _multiInvites + " one-time invites"))
                         {
-                            _oneTimeInvites.AddRange(_apiController.GroupCreateTempInvite(_serverIndex, new(GroupFullInfo.Group), _multiInvites).Result);
+                            _oneTimeInvites.AddRange(_apiController.GroupCreateTempInvite(_serverUuid, new(GroupFullInfo.Group), _multiInvites).Result);
                         }
                     }
 
@@ -138,7 +138,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                     if (userNode)
                     {
                         var pairs = _pairManager.GroupPairs
-                            .FirstOrDefault(pair => pair.Key.ServerIndex == _serverIndex && string.Equals(pair.Key.GroupFullInfo.GID, GroupFullInfo.GID, StringComparison.Ordinal)).Value;
+                            .FirstOrDefault(pair => pair.Key.ServerUuid == _serverUuid && string.Equals(pair.Key.GroupFullInfo.GID, GroupFullInfo.GID, StringComparison.Ordinal)).Value;
                         if (pairs.Count <= 0)
                         {
                             UiSharedService.ColorTextWrapped("No users found in this Syncshell", ImGuiColors.DalamudYellow);
@@ -217,7 +217,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
 
                                                 userInfo.SetModerator(!userInfo.IsModerator());
 
-                                                _ = _apiController.GroupSetUserInfo(_serverIndex, new GroupPairUserInfoDto(GroupFullInfo.Group, pair.Key.UserData, userInfo));
+                                                _ = _apiController.GroupSetUserInfo(_serverUuid, new GroupPairUserInfoDto(GroupFullInfo.Group, pair.Key.UserData, userInfo));
                                             }
                                         }
                                         UiSharedService.AttachToolTip(pair.Value != null && pair.Value.Value.IsModerator() ? "Demod user" : "Mod user");
@@ -234,7 +234,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
 
                                                 userInfo.SetPinned(!userInfo.IsPinned());
 
-                                                _ = _apiController.GroupSetUserInfo(_serverIndex, new GroupPairUserInfoDto(GroupFullInfo.Group, pair.Key.UserData, userInfo));
+                                                _ = _apiController.GroupSetUserInfo(_serverUuid, new GroupPairUserInfoDto(GroupFullInfo.Group, pair.Key.UserData, userInfo));
                                             }
                                         }
                                         UiSharedService.AttachToolTip(pair.Value != null && pair.Value.Value.IsPinned() ? "Unpin user" : "Pin user");
@@ -244,7 +244,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                                         {
                                             if (_uiSharedService.IconButton(FontAwesomeIcon.Trash))
                                             {
-                                                _ = _apiController.GroupRemoveUser(_serverIndex, new GroupPairDto(GroupFullInfo.Group, pair.Key.UserData));
+                                                _ = _apiController.GroupRemoveUser(_serverUuid, new GroupPairDto(GroupFullInfo.Group, pair.Key.UserData));
                                             }
                                         }
                                         UiSharedService.AttachToolTip("Remove user from Syncshell"
@@ -268,7 +268,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                                         {
                                             if (_uiSharedService.IconButton(FontAwesomeIcon.Crown) && UiSharedService.CtrlPressed() && UiSharedService.ShiftPressed())
                                             {
-                                                _ = _apiController.GroupChangeOwnership(_serverIndex, new(GroupFullInfo.Group, pair.Key.UserData));
+                                                _ = _apiController.GroupChangeOwnership(_serverUuid, new(GroupFullInfo.Group, pair.Key.UserData));
                                             }
                                         }
 
@@ -291,7 +291,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         {
                             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Broom, "Clear Syncshell"))
                             {
-                                _ = _apiController.GroupClear(_serverIndex, new(GroupFullInfo.Group));
+                                _ = _apiController.GroupClear(_serverUuid, new(GroupFullInfo.Group));
                             }
                         }
                         UiSharedService.AttachToolTip("This will remove all non-pinned, non-moderator users from the Syncshell."
@@ -303,7 +303,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
 
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Unlink, "Check for Inactive Users"))
                         {
-                            _pruneTestTask = _apiController.GroupPrune(_serverIndex, new(GroupFullInfo.Group), _pruneDays, execute: false);
+                            _pruneTestTask = _apiController.GroupPrune(_serverUuid, new(GroupFullInfo.Group), _pruneDays, execute: false);
                             _pruneTask = null;
                         }
                         UiSharedService.AttachToolTip($"This will start the prune process for this Syncshell of inactive users that have not logged in in the past {_pruneDays} days."
@@ -336,7 +336,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                                     {
                                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Broom, "Prune Inactive Users"))
                                         {
-                                            _pruneTask = _apiController.GroupPrune(_serverIndex, new(GroupFullInfo.Group), _pruneDays, execute: true);
+                                            _pruneTask = _apiController.GroupPrune(_serverUuid, new(GroupFullInfo.Group), _pruneDays, execute: true);
                                             _pruneTestTask = null;
                                         }
                                     }
@@ -364,7 +364,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                     {
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Retweet, "Refresh Banlist from Server"))
                         {
-                            _bannedUsers = _apiController.GroupGetBannedUsers(_serverIndex, new GroupDto(GroupFullInfo.Group)).Result;
+                            _bannedUsers = _apiController.GroupGetBannedUsers(_serverUuid, new GroupDto(GroupFullInfo.Group)).Result;
                         }
 
                         if (ImGui.BeginTable("bannedusertable" + GroupFullInfo.GID, 6, ImGuiTableFlags.RowBg | ImGuiTableFlags.SizingStretchProp, CalculateTableHeight(_bannedUsers.Count)))
@@ -394,7 +394,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                                 using var banId = ImRaii.PushId(bannedUser.UID);
                                 if (_uiSharedService.IconTextButton(FontAwesomeIcon.Check, "Unban"))
                                 {
-                                    _ = _apiController.GroupUnbanUser(_serverIndex, bannedUser);
+                                    _ = _apiController.GroupUnbanUser(_serverUuid, bannedUser);
                                     _bannedUsers.RemoveAll(b => string.Equals(b.UID, bannedUser.UID, StringComparison.Ordinal));
                                 }
                             }
@@ -421,7 +421,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         isDisableSounds ? "Suggest to enable sound sync" : "Suggest to disable sound sync"))
                     {
                         perm.SetPreferDisableSounds(!perm.IsPreferDisableSounds());
-                        _ = _apiController.GroupChangeGroupPermissionState(_serverIndex, new(GroupFullInfo.Group, perm));
+                        _ = _apiController.GroupChangeGroupPermissionState(_serverUuid, new(GroupFullInfo.Group, perm));
                     }
 
                     ImGui.AlignTextToFramePadding();
@@ -432,7 +432,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         isDisableAnimations ? "Suggest to enable animation sync" : "Suggest to disable animation sync"))
                     {
                         perm.SetPreferDisableAnimations(!perm.IsPreferDisableAnimations());
-                        _ = _apiController.GroupChangeGroupPermissionState(_serverIndex, new(GroupFullInfo.Group, perm));
+                        _ = _apiController.GroupChangeGroupPermissionState(_serverUuid, new(GroupFullInfo.Group, perm));
                     }
 
                     ImGui.AlignTextToFramePadding();
@@ -443,7 +443,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         isDisableVfx ? "Suggest to enable vfx sync" : "Suggest to disable vfx sync"))
                     {
                         perm.SetPreferDisableVFX(!perm.IsPreferDisableVFX());
-                        _ = _apiController.GroupChangeGroupPermissionState(_serverIndex, new(GroupFullInfo.Group, perm));
+                        _ = _apiController.GroupChangeGroupPermissionState(_serverUuid, new(GroupFullInfo.Group, perm));
                     }
 
                     UiSharedService.TextWrapped("Note: those suggested permissions will be shown to users on joining the Syncshell.");
@@ -470,7 +470,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         {
                             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Passport, "Change Password"))
                             {
-                                _pwChangeSuccess = _apiController.GroupChangePassword(_serverIndex, new GroupPasswordDto(GroupFullInfo.Group, _newPassword)).Result;
+                                _pwChangeSuccess = _apiController.GroupChangePassword(_serverUuid, new GroupPasswordDto(GroupFullInfo.Group, _newPassword)).Result;
                                 _newPassword = string.Empty;
                             }
                         }
@@ -484,7 +484,7 @@ public class SyncshellAdminUI : WindowMediatorSubscriberBase
                         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Delete Syncshell") && UiSharedService.CtrlPressed() && UiSharedService.ShiftPressed())
                         {
                             IsOpen = false;
-                            _ = _apiController.GroupDelete(_serverIndex, new(GroupFullInfo.Group));
+                            _ = _apiController.GroupDelete(_serverUuid, new(GroupFullInfo.Group));
                         }
                         UiSharedService.AttachToolTip("Hold CTRL and Shift and click to delete this Syncshell." + Environment.NewLine + "WARNING: this action is irreversible.");
                     }

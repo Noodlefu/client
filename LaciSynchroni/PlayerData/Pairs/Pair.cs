@@ -1,4 +1,5 @@
-﻿using Dalamud.Game.Gui.ContextMenu;
+﻿using System;
+using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Game.Text.SeStringHandling;
 using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Data.Enum;
@@ -23,19 +24,19 @@ public class Pair
     /// <summary>
     /// The server from which this pair originates
     /// </summary>
-    public readonly int ServerIndex;
+    public readonly Guid ServerUuid;
     private CancellationTokenSource _applicationCts = new();
     private OnlineUserIdentDto? _onlineUserIdentDto = null;
 
     public Pair(ILogger<Pair> logger, UserFullPairDto userPair, PairHandlerFactory cachedPlayerFactory,
-        SyncMediator mediator, ServerConfigurationManager serverConfigurationManager, int serverIndex)
+        SyncMediator mediator, ServerConfigurationManager serverConfigurationManager, Guid serverUuid)
     {
         _logger = logger;
         UserPair = userPair;
         _cachedPlayerFactory = cachedPlayerFactory;
         _mediator = mediator;
         _serverConfigurationManager = serverConfigurationManager;
-        ServerIndex = serverIndex;
+        ServerUuid = serverUuid;
     }
 
     public bool HasCachedPlayer => CachedPlayer != null && !string.IsNullOrEmpty(CachedPlayer.PlayerName) && _onlineUserIdentDto != null;
@@ -101,7 +102,7 @@ public class Pair
         args.AddMenuItem(new MenuItem()
         {
             Name = cyclePauseState,
-            OnClicked = (a) => _mediator.Publish(new CyclePauseMessage(ServerIndex, UserData)),
+            OnClicked = (a) => _mediator.Publish(new CyclePauseMessage(ServerUuid, UserData)),
             UseDefaultPrefix = false,
             PrefixChar = 'M',
             PrefixColor = 526
@@ -177,7 +178,7 @@ public class Pair
 
     public string? GetNote()
     {
-        return _serverConfigurationManager.GetNoteForUid(ServerIndex, UserData.UID);
+        return _serverConfigurationManager.GetNoteForUid(ServerUuid, UserData.UID);
     }
 
     public string GetPlayerNameHash()
@@ -211,7 +212,7 @@ public class Pair
 
     public void SetNote(string note)
     {
-        _serverConfigurationManager.SetNoteForUid(ServerIndex, UserData.UID, note);
+        _serverConfigurationManager.SetNoteForUid(ServerUuid, UserData.UID, note);
     }
 
     internal void SetIsUploading()

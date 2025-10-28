@@ -1,79 +1,79 @@
-﻿using LaciSynchroni.Common.Data;
+﻿using System;
+using LaciSynchroni.Common.Data;
 using LaciSynchroni.Common.Dto.CharaData;
+using LaciSynchroni.Common.Dto.User;
 
 namespace LaciSynchroni.WebAPI;
 
-using ServerIndex = int;
-
-public partial class ApiController
+public sealed partial class ApiController
 {
-    public async Task<CharaDataFullDto?> CharaDataCreate(ServerIndex serverIndex)
+    public async Task<CharaDataFullDto?> CharaDataCreate(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataCreate().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataCreate().ConfigureAwait(false);
     }
 
-    public async Task<CharaDataFullDto?> CharaDataUpdate(ServerIndex serverIndex, CharaDataUpdateDto updateDto)
+    public async Task<CharaDataFullDto?> CharaDataUpdate(Guid serverUuid, CharaDataUpdateDto updateDto)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataUpdate(updateDto).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataUpdate(updateDto).ConfigureAwait(false);
     }
 
-    public async Task<bool> CharaDataDelete(ServerIndex serverIndex, string id)
+    public async Task<bool> CharaDataDelete(Guid serverUuid, string id)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataDelete(id).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataDelete(id).ConfigureAwait(false);
     }
 
-    public async Task<CharaDataMetaInfoDto?> CharaDataGetMetainfo(ServerIndex serverIndex, string id)
+    public async Task<CharaDataMetaInfoDto?> CharaDataGetMetainfo(Guid serverUuid, string id)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataGetMetainfo(id).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataGetMetainfo(id).ConfigureAwait(false);
     }
 
-    public async Task<CharaDataFullDto?> CharaDataAttemptRestore(ServerIndex serverIndex, string id)
+    public async Task<CharaDataFullDto?> CharaDataAttemptRestore(Guid serverUuid, string id)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataAttemptRestore(id).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataAttemptRestore(id).ConfigureAwait(false);
     }
 
-    public async Task<List<CharaDataFullDto>> CharaDataGetOwn(ServerIndex serverIndex)
+    public async Task<List<CharaDataFullDto>> CharaDataGetOwn(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataGetOwn().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataGetOwn().ConfigureAwait(false);
     }
 
-    public async Task<List<CharaDataMetaInfoDto>> CharaDataGetShared(ServerIndex serverIndex)
+    public async Task<List<CharaDataMetaInfoDto>> CharaDataGetShared(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataGetShared().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataGetShared().ConfigureAwait(false);
     }
 
-    public async Task<CharaDataDownloadDto?> CharaDataDownload(ServerIndex serverIndex, string id)
+    public async Task<CharaDataDownloadDto?> CharaDataDownload(Guid serverUuid, string id)
     {
-        return await GetClientForServer(serverIndex)!.CharaDataDownload(id).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.CharaDataDownload(id).ConfigureAwait(false);
     }
 
-    public async Task<string> GposeLobbyCreate(ServerIndex serverIndex)
+    public async Task<string> GposeLobbyCreate(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.GposeLobbyCreate().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GposeLobbyCreate().ConfigureAwait(false);
     }
 
-    public async Task<bool> GposeLobbyLeave(ServerIndex serverIndex)
+    public async Task<bool> GposeLobbyLeave(Guid serverUuid)
     {
-        return await GetClientForServer(serverIndex)!.GposeLobbyLeave().ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GposeLobbyLeave().ConfigureAwait(false);
     }
 
-    public async Task<List<UserData>> GposeLobbyJoin(ServerIndex serverIndex, string lobbyId)
+    public async Task<List<UserData>> GposeLobbyJoin(Guid serverUuid, string lobbyId)
     {
-        return await GetClientForServer(serverIndex)!.GposeLobbyJoin(lobbyId).ConfigureAwait(false);
+        return await GetClientForServer(serverUuid)!.GposeLobbyJoin(lobbyId).ConfigureAwait(false);
     }
 
-    public async Task GposeLobbyPushCharacterData(ServerIndex serverIndex, CharaDataDownloadDto charaDownloadDto)
+    public async Task GposeLobbyPushCharacterData(Guid serverUuid, CharaDataDownloadDto charaDownloadDto)
     {
-        await GetClientForServer(serverIndex)!.GposeLobbyPushCharacterData(charaDownloadDto).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GposeLobbyPushCharacterData(charaDownloadDto).ConfigureAwait(false);
     }
 
-    public async Task GposeLobbyPushPoseData(ServerIndex serverIndex, PoseData poseData)
+    public async Task GposeLobbyPushPoseData(Guid serverUuid, PoseData poseData)
     {
-        await GetClientForServer(serverIndex)!.GposeLobbyPushPoseData(poseData).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GposeLobbyPushPoseData(poseData).ConfigureAwait(false);
     }
 
-    public async Task GposeLobbyPushWorldData(ServerIndex serverIndex, WorldData worldData)
+    public async Task GposeLobbyPushWorldData(Guid serverUuid, WorldData worldData)
     {
-        await GetClientForServer(serverIndex)!.GposeLobbyPushWorldData(worldData).ConfigureAwait(false);
+        await GetClientForServer(serverUuid)!.GposeLobbyPushWorldData(worldData).ConfigureAwait(false);
     }
 }

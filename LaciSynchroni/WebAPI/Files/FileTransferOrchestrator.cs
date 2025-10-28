@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.Services.Mediator;
+﻿using System;
+using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.SyncConfiguration;
 using LaciSynchroni.SyncConfiguration.Models;
 using LaciSynchroni.WebAPI.Files.Models;
@@ -11,12 +12,10 @@ using System.Reflection;
 
 namespace LaciSynchroni.WebAPI.Files;
 
-using ServerIndex = int;
-
 public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
 {
     private readonly ConcurrentDictionary<Guid, bool> _downloadReady = new();
-    private readonly ConcurrentDictionary<ServerIndex, Uri> _cdnUris = new();
+    private readonly ConcurrentDictionary<Guid, Uri> _cdnUris = new();
     private readonly HttpClient _httpClient;
     private readonly SyncConfigService _syncConfig;
     private readonly object _semaphoreModificationLock = new();
@@ -41,12 +40,12 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
         Mediator.Subscribe<ConnectedMessage>(this, (msg) =>
         {
             var newUri = msg.Connection.ServerInfo.FileServerAddress;
-            _cdnUris.AddOrUpdate(msg.serverIndex, i => newUri, (i, uri) => newUri);
+            _cdnUris.AddOrUpdate(msg.ServerUuid, _ => newUri, (_, _) => newUri);
         });
 
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            _cdnUris.TryRemove(msg.ServerIndex, out _);
+            _cdnUris.TryRemove(msg.ServerUuid, out _);
         });
         Mediator.Subscribe<DownloadReadyMessage>(this, (msg) =>
         {
@@ -56,9 +55,9 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
 
     public List<FileTransfer> ForbiddenTransfers { get; } = [];
 
-    public Uri? GetFileCdnUri(int serverIndex)
+    public Uri? GetFileCdnUri(Guid serverUuid)
     {
-        _cdnUris.TryGetValue(serverIndex, out var uri);
+        _cdnUris.TryGetValue(serverUuid, out var uri);
         return uri;
     }
 
@@ -90,28 +89,28 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
         }
     }
 
-    public async Task<HttpResponseMessage> SendRequestAsync(int serverIndex, HttpMethod method, Uri uri,
+    public async Task<HttpResponseMessage> SendRequestAsync(Guid serverUuid, HttpMethod method, Uri uri,
         CancellationToken? ct = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead)
     {
         using var requestMessage = new HttpRequestMessage(method, uri);
-        return await SendRequestInternalAsync(serverIndex, requestMessage, ct, httpCompletionOption).ConfigureAwait(false);
+        return await SendRequestInternalAsync(serverUuid, requestMessage, ct, httpCompletionOption).ConfigureAwait(false);
     }
 
-    public async Task<HttpResponseMessage> SendRequestAsync<T>(int serverIndex, HttpMethod method, Uri uri, T content, CancellationToken ct) where T : class
+    public async Task<HttpResponseMessage> SendRequestAsync<T>(Guid serverUuid, HttpMethod method, Uri uri, T content, CancellationToken ct) where T : class
     {
         using var requestMessage = new HttpRequestMessage(method, uri);
         if (content is not ByteArrayContent)
             requestMessage.Content = JsonContent.Create(content);
         else
             requestMessage.Content = content as ByteArrayContent;
-        return await SendRequestInternalAsync(serverIndex, requestMessage, ct).ConfigureAwait(false);
+        return await SendRequestInternalAsync(serverUuid, requestMessage, ct).ConfigureAwait(false);
     }
 
-    public async Task<HttpResponseMessage> SendRequestStreamAsync(int serverIndex, HttpMethod method, Uri uri, ProgressableStreamContent content, CancellationToken ct)
+    public async Task<HttpResponseMessage> SendRequestStreamAsync(Guid serverUuid, HttpMethod method, Uri uri, ProgressableStreamContent content, CancellationToken ct)
     {
         using var requestMessage = new HttpRequestMessage(method, uri);
         requestMessage.Content = content;
-        return await SendRequestInternalAsync(serverIndex, requestMessage, ct).ConfigureAwait(false);
+        return await SendRequestInternalAsync(serverUuid, requestMessage, ct).ConfigureAwait(false);
     }
 
     public async Task WaitForDownloadSlotAsync(CancellationToken token)
@@ -141,22 +140,19 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
             _ => limit,
         };
         var currentUsedDlSlots = CurrentlyUsedDownloadSlots;
-        var avaialble = _availableDownloadSlots;
-        var currentCount = _downloadSemaphore.CurrentCount;
         var dividedLimit = limit / (currentUsedDlSlots == 0 ? 1 : currentUsedDlSlots);
         if (dividedLimit < 0)
         {
-            Logger.LogWarning("Calculated Bandwidth Limit is negative, returning Infinity: {Value}, CurrentlyUsedDownloadSlots is {CurrentSlots}, " +
-                "DownloadSpeedLimit is {Limit}, available slots: {Avail}, current count: {Count}", dividedLimit, currentUsedDlSlots, limit, avaialble, currentCount);
+            Logger.LogWarning("Calculated Bandwidth Limit is negative, returning Infinity: {Value}, CurrentlyUsedDownloadSlots is {CurrentSlots}, DownloadSpeedLimit is {Limit}", dividedLimit, currentUsedDlSlots, limit);
             return long.MaxValue;
         }
         return Math.Clamp(dividedLimit, 1, long.MaxValue);
     }
 
-    private async Task<HttpResponseMessage> SendRequestInternalAsync(ServerIndex serverIndex, HttpRequestMessage requestMessage,
+    private async Task<HttpResponseMessage> SendRequestInternalAsync(Guid serverUuid, HttpRequestMessage requestMessage,
         CancellationToken? ct = null, HttpCompletionOption httpCompletionOption = HttpCompletionOption.ResponseContentRead)
     {
-        var token = await _multiConnectTokenService.GetCachedToken(serverIndex).ConfigureAwait(false);
+        var token = await _multiConnectTokenService.GetCachedToken(serverUuid).ConfigureAwait(false);
         requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         if (requestMessage.Content != null && requestMessage.Content is not StreamContent && requestMessage.Content is not ByteArrayContent)

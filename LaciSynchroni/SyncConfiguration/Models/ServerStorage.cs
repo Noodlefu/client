@@ -1,4 +1,5 @@
-﻿using Dalamud.Utility;
+﻿using System;
+using Dalamud.Utility;
 using Microsoft.AspNetCore.Http.Connections;
 
 namespace LaciSynchroni.SyncConfiguration.Models;
@@ -6,6 +7,7 @@ namespace LaciSynchroni.SyncConfiguration.Models;
 [Serializable]
 public class ServerStorage
 {
+    public Guid ServerUuid { get; set; } = Guid.Empty;
     public List<Authentication> Authentications { get; set; } = [];
     public bool FullPause { get; set; } = false;
     public Dictionary<int, SecretKey> SecretKeys { get; set; } = [];

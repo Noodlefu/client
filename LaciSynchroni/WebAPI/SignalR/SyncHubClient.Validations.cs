@@ -7,6 +7,8 @@ using LaciSynchroni.WebAPI.SignalR.Utils;
 using Microsoft.Extensions.Logging;
 using System.Globalization;
 using System.Reflection;
+using System;
+using LaciSynchroni.Services.ServerConfiguration;
 
 namespace LaciSynchroni.WebAPI;
 
@@ -52,7 +54,7 @@ public partial class SyncHubClient
         {
             return true;
         }
-        var oauth2 = _serverConfigurationManager.GetOAuth2(out var multi, ServerIndex);
+        var oauth2 = _serverConfigurationManager.GetOAuth2(ServerUuid, out var multi);
         if (multi)
         {
             Logger.LogWarning("Multiple secret keys for current character");
@@ -76,7 +78,7 @@ public partial class SyncHubClient
             return false;
         }
 
-        if (!await _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(ServerIndex, _serverConfigurationManager.GetServerByIndex(ServerIndex)).ConfigureAwait(false))
+        if (!await _multiConnectTokenService.TryUpdateOAuth2LoginTokenAsync(ServerUuid, ServerToUse).ConfigureAwait(false))
         {
             Logger.LogWarning("OAuth2 login token could not be updated");
             ConnectionDto = null;
@@ -158,35 +160,25 @@ public partial class SyncHubClient
 
     private async Task<bool> VerifySecretKeyAuth()
     {
-        if (ServerToUse.UseOAuth2)
+        var oauth2 = _serverConfigurationManager.GetOAuth2(ServerUuid, out var multi);
+        if (oauth2 == null)
         {
-            // We're using oAuth, no need to verify secret keys
             return true;
         }
-        var secretKey = _serverConfigurationManager.GetSecretKey(out bool multi, ServerIndex);
+
+        _logger.LogInformation("Using OAuth2 login");
         if (multi)
         {
-            _logger.LogWarning("Multiple secret keys for current character");
-            ConnectionDto = null;
-            Mediator.Publish(new NotificationMessage("Multiple Identical Characters detected",
-                $"Your Service configuration has multiple characters with the same name and world set up." +
-                $" Delete the duplicates in the character management to be able to connect to a {_dalamudUtil.GetPluginName()} server.",
-                NotificationType.Error));
-            await StopConnectionAsync(ServerState.MultiChara).ConfigureAwait(false);
-            _connectionCancellationTokenSource?.Cancel();
+            Mediator.Publish(new NotificationMessage("Multiple Matches", "Multiple matches found, please resolve in the main UI", NotificationType.Warning));
             return false;
         }
 
-        if (secretKey.IsNullOrEmpty())
+        if (string.IsNullOrEmpty(oauth2.Value.OAuthToken))
         {
-            Logger.LogWarning("No secret key set for current character");
-            ConnectionDto = null;
-            await StopConnectionAsync(ServerState.NoSecretKey).ConfigureAwait(false);
-            _connectionCancellationTokenSource?.Cancel();
+            Mediator.Publish(new NotificationMessage("Missing OAuth Token", "No OAuth token configured", NotificationType.Warning));
             return false;
         }
 
-        // Checks passed, all good, let's continue!
         return true;
     }
 }

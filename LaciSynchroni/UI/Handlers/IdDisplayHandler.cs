@@ -29,10 +29,10 @@ public class IdDisplayHandler
         _syncConfigService = syncConfigService;
     }
 
-    public void DrawGroupText(int serverIndex, string id, GroupFullInfoDto group, float textPosX, Func<float> editBoxWidth)
+    public void DrawGroupText(Guid serverUuid, string id, GroupFullInfoDto group, float textPosX, Func<float> editBoxWidth)
     {
         ImGui.SameLine(textPosX);
-        (bool textIsUid, string playerText) = GetGroupText(serverIndex, group);
+        (bool textIsUid, string playerText) = GetGroupText(serverUuid, group);
         if (!string.Equals(_editEntry, group.GID, StringComparison.Ordinal))
         {
             ImGui.AlignTextToFramePadding();
@@ -54,14 +54,14 @@ public class IdDisplayHandler
             {
                 if (_editIsUid)
                 {
-                    _serverManager.SetNoteForUid(serverIndex, _editEntry, _editComment, save: true);
+                    _serverManager.SetNoteForUid(serverUuid, _editEntry, _editComment, save: true);
                 }
                 else
                 {
-                    _serverManager.SetNoteForGid(serverIndex, _editEntry, _editComment, save: true);
+                    _serverManager.SetNoteForGid(serverUuid, _editEntry, _editComment, save: true);
                 }
 
-                _editComment = _serverManager.GetNoteForGid(serverIndex, group.GID) ?? string.Empty;
+                _editComment = _serverManager.GetNoteForGid(serverUuid, group.GID) ?? string.Empty;
                 _editEntry = group.GID;
                 _editIsUid = false;
             }
@@ -73,7 +73,7 @@ public class IdDisplayHandler
             ImGui.SetNextItemWidth(editBoxWidth.Invoke());
             if (ImGui.InputTextWithHint("", "Name/Notes", ref _editComment, 255, ImGuiInputTextFlags.EnterReturnsTrue))
             {
-                _serverManager.SetNoteForGid(serverIndex, group.GID, _editComment, save: true);
+                _serverManager.SetNoteForGid(serverUuid, group.GID, _editComment, save: true);
                 _editEntry = string.Empty;
             }
 
@@ -140,11 +140,11 @@ public class IdDisplayHandler
             {
                 if (_editIsUid)
                 {
-                    _serverManager.SetNoteForUid(pair.ServerIndex, _editEntry, _editComment, save: true);
+                    _serverManager.SetNoteForUid(pair.ServerUuid, _editEntry, _editComment, save: true);
                 }
                 else
                 {
-                    _serverManager.SetNoteForGid(pair.ServerIndex, _editEntry, _editComment, save: true);
+                    _serverManager.SetNoteForGid(pair.ServerUuid, _editEntry, _editComment, save: true);
                 }
 
                 _editComment = pair.GetNote() ?? string.Empty;
@@ -164,7 +164,7 @@ public class IdDisplayHandler
             ImGui.SetNextItemWidth(editBoxWidth.Invoke());
             if (ImGui.InputTextWithHint("##" + pair.UserData.UID, "Nick/Notes", ref _editComment, 255, ImGuiInputTextFlags.EnterReturnsTrue))
             {
-                _serverManager.SetNoteForUid(pair.ServerIndex, pair.UserData.UID, _editComment);
+                _serverManager.SetNoteForUid(pair.ServerUuid, pair.UserData.UID, _editComment);
                 _editEntry = string.Empty;
             }
 
@@ -176,11 +176,11 @@ public class IdDisplayHandler
         }
     }
 
-    public (bool isGid, string text) GetGroupText(int serverIndex, GroupFullInfoDto group)
+    public (bool isGid, string text) GetGroupText(Guid serverUuid, GroupFullInfoDto group)
     {
         var textIsGid = true;
         bool showUidInsteadOfName = ShowGidInsteadOfName(group);
-        string? groupText = _serverManager.GetNoteForGid(serverIndex, group.GID);
+        string? groupText = _serverManager.GetNoteForGid(serverUuid, group.GID);
         if (!showUidInsteadOfName && groupText != null)
         {
             if (string.IsNullOrEmpty(groupText))
@@ -204,7 +204,7 @@ public class IdDisplayHandler
     {
         var textIsUid = true;
         bool showUidInsteadOfName = ShowUidInsteadOfName(pair);
-        string? playerText = _serverManager.GetNoteForUid(pair.ServerIndex, pair.UserData.UID);
+        string? playerText = _serverManager.GetNoteForUid(pair.ServerUuid, pair.UserData.UID);
         if (!showUidInsteadOfName && playerText != null)
         {
             if (string.IsNullOrEmpty(playerText))

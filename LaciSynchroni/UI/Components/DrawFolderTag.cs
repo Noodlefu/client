@@ -16,9 +16,9 @@ public class DrawFolderTag : DrawFolderBase
     private readonly ServerConfigurationManager _serverConfigManager;
     private readonly TagHandler _tagHandler;
     private readonly SelectPairForTagUi _selectPairForTagUi;
-    private readonly TagWithServerIndex _tag;
+    private readonly TagWithServer _tag;
 
-    public DrawFolderTag(TagWithServerIndex tag, IImmutableList<DrawUserPair> drawPairs, IImmutableList<Pair> allPairs,
+    public DrawFolderTag(TagWithServer tag, IImmutableList<DrawUserPair> drawPairs, IImmutableList<Pair> allPairs,
         TagHandler tagHandler, ApiController apiController, SelectPairForTagUi selectPairForTagUi, UiSharedService uiSharedService, ServerConfigurationManager serverConfigManager)
         : base(drawPairs, allPairs, uiSharedService)
     {
@@ -31,8 +31,8 @@ public class DrawFolderTag : DrawFolderBase
 
     protected override bool RenderIfEmpty => true;
     protected override bool RenderMenu => true;
-    protected override bool IsOpen => _tagHandler.IsTagOpen(_tag.ServerIndex, _tag.Tag);
-    protected override string ComponentId => $"{_tag.ServerIndex}-{_tag.Tag}";
+    protected override bool IsOpen => _tagHandler.IsTagOpen(_tag.ServerUuid, _tag.Tag);
+    protected override string ComponentId => $"{_tag.ServerUuid}-{_tag.Tag}";
 
 
     protected override float DrawIcon()
@@ -49,12 +49,12 @@ public class DrawFolderTag : DrawFolderBase
         ImGui.TextUnformatted("Group Menu");
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Users, "Select Pairs", menuWidth, true))
         {
-            _selectPairForTagUi.Open(_tag.ServerIndex, _tag.Tag);
+            _selectPairForTagUi.Open(_tag.ServerUuid, _tag.Tag);
         }
         UiSharedService.AttachToolTip("Select Individual Pairs for this Pair Group");
         if (_uiSharedService.IconTextButton(FontAwesomeIcon.Trash, "Delete Pair Group", menuWidth, true) && UiSharedService.CtrlPressed())
         {
-            _tagHandler.RemoveTag(_tag.ServerIndex, _tag.Tag);
+            _tagHandler.RemoveTag(_tag.ServerUuid, _tag.Tag);
         }
         UiSharedService.AttachToolTip("Hold CTRL to remove this Group permanently." + Environment.NewLine +
             "Note: this will not unpair with users in this Group.");
@@ -96,19 +96,19 @@ public class DrawFolderTag : DrawFolderBase
 
     protected override void ToggleOpen()
     {
-        _tagHandler.ToggleTagOpen(_tag.ServerIndex, _tag.Tag);
+        _tagHandler.ToggleTagOpen(_tag.ServerUuid, _tag.Tag);
     }
 
     private void AddTooltip()
     {
-        var serverName = _serverConfigManager.GetServerNameByIndex(_tag.ServerIndex);
+        var serverName = _serverConfigManager.GetServerByUuid(_tag.ServerUuid).ServerName;
         var serverText = $"For server {serverName}";
         UiSharedService.AttachToolTip( serverText + Environment.NewLine + OnlinePairs + " online" + Environment.NewLine + TotalPairs + " total");
     }
 
     private void PauseRemainingPairs(IEnumerable<Pair> availablePairs)
     {
-        foreach (IGrouping<int, Pair> grouping in availablePairs.GroupBy(pair => pair.ServerIndex, pair => pair))
+        foreach (IGrouping<Guid, Pair> grouping in availablePairs.GroupBy(pair => pair.ServerUuid, pair => pair))
         {
             _ = _apiController.SetBulkPermissions(grouping.Key, new(grouping
                     .ToDictionary(g => g.UserData.UID, g =>
@@ -123,7 +123,7 @@ public class DrawFolderTag : DrawFolderBase
 
     private void ResumeAllPairs(IEnumerable<Pair> availablePairs)
     {
-        foreach (IGrouping<int, Pair> grouping in availablePairs.GroupBy(pair => pair.ServerIndex, pair => pair))
+        foreach (IGrouping<Guid, Pair> grouping in availablePairs.GroupBy(pair => pair.ServerUuid, pair => pair))
         {
             _ = _apiController.SetBulkPermissions(grouping.Key, new(grouping
                     .ToDictionary(g => g.UserData.UID, g =>

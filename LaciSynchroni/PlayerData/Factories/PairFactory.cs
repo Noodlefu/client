@@ -1,4 +1,5 @@
-﻿using LaciSynchroni.Common.Dto.User;
+﻿using System;
+using LaciSynchroni.Common.Dto.User;
 using LaciSynchroni.PlayerData.Pairs;
 using LaciSynchroni.Services.Mediator;
 using LaciSynchroni.Services.ServerConfiguration;
@@ -22,14 +23,14 @@ public class PairFactory
         _serverConfigurationManager = serverConfigurationManager;
     }
 
-    public Pair Create(UserFullPairDto userPairDto, int serverIndex)
+    public Pair Create(UserFullPairDto userPairDto, Guid serverUuid)
     {
-        return new Pair(_loggerFactory.CreateLogger<Pair>(), userPairDto, _cachedPlayerFactory, _syncMediator, _serverConfigurationManager, serverIndex);
+        return new Pair(_loggerFactory.CreateLogger<Pair>(), userPairDto, _cachedPlayerFactory, _syncMediator, _serverConfigurationManager, serverUuid);
     }
 
-    public Pair Create(UserPairDto userPairDto, int serverIndex)
+    public Pair Create(UserPairDto userPairDto, Guid serverUuid)
     {
         return new Pair(_loggerFactory.CreateLogger<Pair>(), new(userPairDto.User, userPairDto.IndividualPairStatus, [], userPairDto.OwnPermissions, userPairDto.OtherPermissions),
-            _cachedPlayerFactory, _syncMediator, _serverConfigurationManager, serverIndex);
+            _cachedPlayerFactory, _syncMediator, _serverConfigurationManager, serverUuid);
     }
 }

@@ -27,7 +27,7 @@ public class TopTabMenu
     private int _globalControlCountdown = 0;
 
     private string _pairToAdd = string.Empty;
-    private int _pairTabSelectedServer = 0;
+    private Guid _pairTabSelectedServer;
 
     private SelectedTab _selectedTab = SelectedTab.None;
     public TopTabMenu(SyncMediator syncMediator, ApiController apiController, PairManager pairManager, UiSharedService uiSharedService, ServerConfigurationManager serverConfigurationManager)
@@ -37,7 +37,8 @@ public class TopTabMenu
         _pairManager = pairManager;
         _uiSharedService = uiSharedService;
         _serverConfigurationManager = serverConfigurationManager;
-        _pairTabServerSelector = new ServerSelectorSmall(index => _pairTabSelectedServer = index);
+        _pairTabServerSelector = new ServerSelectorSmall(serverUuid => _pairTabSelectedServer = serverUuid);
+        _pairTabSelectedServer = _apiController.ConnectedServerUuids.FirstOrDefault();
     }
 
     public bool IsUserConfigTabSelected => TabSelection == SelectedTab.UserConfig;
@@ -193,7 +194,8 @@ public class TopTabMenu
 
     private void DrawAddPair(float availableXWidth, float spacingX)
     {
-        _pairTabServerSelector.Draw(_serverConfigurationManager.GetServerNames(), _apiController.ConnectedServerIndexes, availableXWidth);
+        var connectedServers = _apiController.ConnectedServerUuids;
+        _pairTabServerSelector.Draw(_serverConfigurationManager.GetServerInfo(), connectedServers, availableXWidth);
         UiSharedService.AttachToolTip("Server to use for pair actions");
 
         var buttonSize = _uiSharedService.GetIconTextButtonSize(FontAwesomeIcon.UserPlus, "Add");

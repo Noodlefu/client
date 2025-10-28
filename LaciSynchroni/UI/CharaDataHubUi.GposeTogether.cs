@@ -98,12 +98,12 @@ internal sealed partial class CharaDataHubUi
             ImGuiHelpers.ScaledDummy(5);
         }
 
-        if (!_apiController.ConnectedServerIndexes.Any(p => p == _selectedServerIndex))
+        if (!_apiController.ConnectedServerUuids.Any(p => p == _selectedServerUuid))
         {
-            _selectedServerIndex = _apiController.ConnectedServerIndexes.FirstOrDefault();
+            _selectedServerUuid = _apiController.ConnectedServerUuids.FirstOrDefault();
         }
 
-        bool isServerConnected = _uiSharedService.ApiController.IsServerConnected(_selectedServerIndex);
+        bool isServerConnected = _uiSharedService.ApiController.IsServerConnected(_selectedServerUuid);
         if (!isServerConnected)
         {
             ImGuiHelpers.ScaledDummy(5);
@@ -130,7 +130,7 @@ internal sealed partial class CharaDataHubUi
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.Plus, "Create New GPose Together Lobby"))
             {
-                _charaDataGposeTogetherManager.CreateNewLobby(_selectedServerIndex);
+                _charaDataGposeTogetherManager.CreateNewLobby(_selectedServerUuid);
             }
             ImGuiHelpers.ScaledDummy(5);
             UiSharedService.ScaledNextItemWidth(250);
@@ -139,13 +139,13 @@ internal sealed partial class CharaDataHubUi
 
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowRight, "Join GPose Together Lobby"))
             {
-                _charaDataGposeTogetherManager.JoinGPoseLobby(_selectedServerIndex, _joinLobbyId);
+                _charaDataGposeTogetherManager.JoinGPoseLobby(_selectedServerUuid, _joinLobbyId);
                 _joinLobbyId = string.Empty;
             }
             if (!string.IsNullOrEmpty(_charaDataGposeTogetherManager.LastGPoseLobbyId)
                 && _uiSharedService.IconTextButton(FontAwesomeIcon.LongArrowAltRight, $"Rejoin Last Lobby {_charaDataGposeTogetherManager.LastGPoseLobbyId}"))
             {
-                _charaDataGposeTogetherManager.JoinGPoseLobby(_selectedServerIndex, _charaDataGposeTogetherManager.LastGPoseLobbyId);
+                _charaDataGposeTogetherManager.JoinGPoseLobby(_selectedServerUuid, _charaDataGposeTogetherManager.LastGPoseLobbyId);
             }
         }
         else
@@ -164,13 +164,13 @@ internal sealed partial class CharaDataHubUi
             {
                 ImGui.TextUnformatted("Current Server: ");
                 ImGui.SameLine();
-                UiSharedService.ColorTextWrapped($"{_apiController.GetServerNameByIndex(_charaDataGposeTogetherManager.CurrentGPoseLobbyServerId.Value)}", ImGuiColors.ParsedGreen);
+                UiSharedService.ColorTextWrapped($"{_apiController.GetServerName(_charaDataGposeTogetherManager.CurrentGPoseLobbyServerId.Value)}", ImGuiColors.ParsedGreen);
             }
             using (ImRaii.Disabled(!UiSharedService.CtrlPressed()))
             {
                 if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowLeft, "Leave GPose Lobby"))
                 {
-                    _charaDataGposeTogetherManager.LeaveGPoseLobby(_selectedServerIndex);
+                    _charaDataGposeTogetherManager.LeaveGPoseLobby(_selectedServerUuid);
                 }
             }
             UiSharedService.AttachToolTip("Leave the current GPose lobby." + UiSharedService.TooltipSeparator + "Hold CTRL and click to leave.");
@@ -194,7 +194,7 @@ internal sealed partial class CharaDataHubUi
         {
             if (_uiSharedService.IconTextButton(FontAwesomeIcon.ArrowUp, "Send Updated Character Data"))
             {
-                _ = _charaDataGposeTogetherManager.PushCharacterDownloadDto(_selectedServerIndex);
+                _ = _charaDataGposeTogetherManager.PushCharacterDownloadDto(_selectedServerUuid);
             }
             UiSharedService.AttachToolTip("This will send your current appearance, pose and world data to all users in the lobby.");
 
@@ -234,7 +234,7 @@ internal sealed partial class CharaDataHubUi
         {
             var availWidth = ImGui.GetContentRegionAvail().X;
             ImGui.AlignTextToFramePadding();
-            var note = _serverConfigurationManager.GetNoteForUid(_selectedServerIndex, user.UserData.UID);
+            var note = _serverConfigurationManager.GetNoteForUid(_selectedServerUuid, user.UserData.UID);
             var userText = note == null ? user.UserData.AliasOrUID : $"{note} ({user.UserData.AliasOrUID})";
             UiSharedService.ColorText(userText, ImGuiColors.ParsedGreen);
 
@@ -246,7 +246,7 @@ internal sealed partial class CharaDataHubUi
             {
                 if (_uiSharedService.IconButton(FontAwesomeIcon.ArrowRight))
                 {
-                    _ = _charaDataGposeTogetherManager.ApplyCharaData(_selectedServerIndex, user);
+                    _ = _charaDataGposeTogetherManager.ApplyCharaData(_selectedServerUuid, user);
                 }
             }
             UiSharedService.AttachToolTip("Apply newly received character data to selected actor." + UiSharedService.TooltipSeparator + "Note: If the button is grayed out, the latest data has already been applied.");
@@ -255,7 +255,7 @@ internal sealed partial class CharaDataHubUi
             {
                 if (_uiSharedService.IconButton(FontAwesomeIcon.Plus))
                 {
-                    _ = _charaDataGposeTogetherManager.SpawnAndApplyData(_selectedServerIndex, user);
+                    _ = _charaDataGposeTogetherManager.SpawnAndApplyData(_selectedServerUuid, user);
                 }
             }
             UiSharedService.AttachToolTip("Spawn new actor, apply character data and and assign it to this user." + UiSharedService.TooltipSeparator + "Note: If the button is grayed out, " +

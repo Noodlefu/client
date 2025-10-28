@@ -33,7 +33,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     private int _poseGenerationExecutions = 0;
     // We can only store data for one server. When we swap the selection, the data should be cleared
     // whenever we load data, we set this index. This way, we know which server the data belongs to.
-    private int _dataServerIndex;
+    private Guid _dataServerUuid;
 
     public CharaDataGposeTogetherManager(ILogger<CharaDataGposeTogetherManager> logger, SyncMediator mediator,
             ApiController apiController, IpcCallerBrio brio, DalamudUtilService dalamudUtil, VfxSpawnManager vfxSpawnManager,
@@ -41,7 +41,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     {
         Mediator.Subscribe<GposeLobbyUserJoin>(this, (msg) =>
         {
-            OnUserJoinLobby(msg.ServerIndex, msg.UserData);
+            OnUserJoinLobby(msg.ServerUuid, msg.UserData);
         });
         Mediator.Subscribe<GPoseLobbyUserLeave>(this, (msg) =>
         {
@@ -49,7 +49,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<GPoseLobbyReceiveCharaData>(this, (msg) =>
         {
-            OnReceiveCharaData(msg.ServerIndex, msg.CharaDataDownloadDto);
+            OnReceiveCharaData(msg.ServerUuid, msg.CharaDataDownloadDto);
         });
         Mediator.Subscribe<GPoseLobbyReceivePoseData>(this, (msg) =>
         {
@@ -61,18 +61,18 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<ConnectedMessage>(this, (msg) =>
         {
-            if (msg.serverIndex != _dataServerIndex)
+            if (msg.ServerUuid != _dataServerUuid)
             {
                 // Data belongs to a different server, no need to do anything
                 return;
             }
             if (_usersInLobby.Count > 0 && !string.IsNullOrEmpty(CurrentGPoseLobbyId))
             {
-                JoinGPoseLobby(msg.serverIndex, CurrentGPoseLobbyId, isReconnecting: true);
+                JoinGPoseLobby(msg.ServerUuid, CurrentGPoseLobbyId, isReconnecting: true);
             }
             else
             {
-                LeaveGPoseLobby(msg.serverIndex);
+                LeaveGPoseLobby(msg.ServerUuid);
             }
         });
         Mediator.Subscribe<GposeStartMessage>(this, (msg) =>
@@ -93,7 +93,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         });
         Mediator.Subscribe<DisconnectedMessage>(this, (msg) =>
         {
-            if (msg.ServerIndex == _dataServerIndex)
+            if (msg.ServerUuid == _dataServerUuid)
             {
                 // Lobby leave happens server-side, we just clear state and add last
                 // joined lobby ID so player can rejoin
@@ -110,7 +110,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
     }
 
     public string? CurrentGPoseLobbyId { get; private set; }
-    public int? CurrentGPoseLobbyServerId { get; private set; }
+    public Guid? CurrentGPoseLobbyServerId { get; private set; }
     public string? LastGPoseLobbyId { get; private set; }
 
     public IEnumerable<GposeLobbyUserData> UsersInLobby => _usersInLobby.Values;
@@ -120,7 +120,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         return (data.Map.RowId == _lastWorldData?.LocationInfo.MapId, data.WorldData?.LocationInfo.ServerId == _lastWorldData?.LocationInfo.ServerId, data.WorldData?.LocationInfo == _lastWorldData?.LocationInfo);
     }
 
-    public async Task PushCharacterDownloadDto(int serverIndex)
+    public async Task PushCharacterDownloadDto(Guid serverUuid)
     {
         var playerData = await _charaDataFileHandler.CreatePlayerData().ConfigureAwait(false);
         if (playerData == null) return;
@@ -130,11 +130,11 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
             .Where(u => string.IsNullOrEmpty(u.FileSwapPath)).SelectMany(u => u.GamePaths, (file, path) => new GamePathEntry(file.Hash, path))];
             List<GamePathEntry> fileSwapPaths = [.. playerData.FileReplacements[ObjectKind.Player]
             .Where(u => !string.IsNullOrEmpty(u.FileSwapPath)).SelectMany(u => u.GamePaths, (file, path) => new GamePathEntry(file.FileSwapPath, path))];
-            await _charaDataManager.UploadFiles(serverIndex, [.. playerData.FileReplacements[ObjectKind.Player]
+            await _charaDataManager.UploadFiles(serverUuid, [.. playerData.FileReplacements[ObjectKind.Player]
             .Where(u => string.IsNullOrEmpty(u.FileSwapPath)).SelectMany(u => u.GamePaths, (file, path) => new GamePathEntry(file.Hash, path))])
                 .ConfigureAwait(false);
 
-            var uid = _apiController.GetUidByServer(serverIndex);
+            var uid = _apiController.GetUidByServer(serverUuid);
             CharaDataDownloadDto charaDataDownloadDto = new($"GPOSELOBBY:{CurrentGPoseLobbyId}", new(uid))
             {
                 UpdatedDate = DateTime.UtcNow,
@@ -151,61 +151,61 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         ForceResendOwnData();
 
         if (_lastCreatedCharaData != null)
-            await _apiController.GposeLobbyPushCharacterData(serverIndex, _lastCreatedCharaData.Value.Dto)
+            await _apiController.GposeLobbyPushCharacterData(serverUuid, _lastCreatedCharaData.Value.Dto)
                 .ConfigureAwait(false);
     }
 
-    internal void CreateNewLobby(int serverIndex)
+    internal void CreateNewLobby(Guid serverUuid)
     {
-        _dataServerIndex = serverIndex;
+        _dataServerUuid = serverUuid;
         _ = Task.Run(async () =>
         {
             ClearLobby();
-            CurrentGPoseLobbyId = await _apiController.GposeLobbyCreate(serverIndex).ConfigureAwait(false);
+            CurrentGPoseLobbyId = await _apiController.GposeLobbyCreate(serverUuid).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(CurrentGPoseLobbyId))
             {
-                CurrentGPoseLobbyServerId = serverIndex;
-                _ = GposeWorldPositionBackgroundTask(serverIndex, _lobbyCts.Token);
-                _ = GposePoseDataBackgroundTask(serverIndex, _lobbyCts.Token);
+                CurrentGPoseLobbyServerId = serverUuid;
+                _ = GposeWorldPositionBackgroundTask(serverUuid, _lobbyCts.Token);
+                _ = GposePoseDataBackgroundTask(serverUuid, _lobbyCts.Token);
             }
         });
     }
 
-    internal void JoinGPoseLobby(int serverIndex, string joinLobbyId, bool isReconnecting = false)
+    internal void JoinGPoseLobby(Guid serverUuid, string joinLobbyId, bool isReconnecting = false)
     {
         _ = Task.Run(async () =>
         {
-            var otherUsers = await _apiController.GposeLobbyJoin(serverIndex, joinLobbyId).ConfigureAwait(false);
+            var otherUsers = await _apiController.GposeLobbyJoin(serverUuid, joinLobbyId).ConfigureAwait(false);
             ClearLobby();
-            _dataServerIndex = serverIndex;
+            _dataServerUuid = serverUuid;
             if (otherUsers.Any())
             {
                 LastGPoseLobbyId = string.Empty;
 
                 foreach (var user in otherUsers)
                 {
-                    OnUserJoinLobby(serverIndex, user);
+                    OnUserJoinLobby(serverUuid, user);
                 }
 
                 CurrentGPoseLobbyId = joinLobbyId;
-                CurrentGPoseLobbyServerId = serverIndex;
-                _ = GposeWorldPositionBackgroundTask(serverIndex, _lobbyCts.Token);
-                _ = GposePoseDataBackgroundTask(serverIndex, _lobbyCts.Token);
+                CurrentGPoseLobbyServerId = serverUuid;
+                _ = GposeWorldPositionBackgroundTask(serverUuid, _lobbyCts.Token);
+                _ = GposePoseDataBackgroundTask(serverUuid, _lobbyCts.Token);
             }
             else
             {
-                LeaveGPoseLobby(serverIndex);
+                LeaveGPoseLobby(serverUuid);
                 LastGPoseLobbyId = string.Empty;
                 CurrentGPoseLobbyServerId = null;
             }
         });
     }
 
-    internal void LeaveGPoseLobby(int serverIndex)
+    internal void LeaveGPoseLobby(Guid serverUuid)
     {
         _ = Task.Run(async () =>
         {
-            var left = await _apiController.GposeLobbyLeave(serverIndex).ConfigureAwait(false);
+            var left = await _apiController.GposeLobbyLeave(serverUuid).ConfigureAwait(false);
             if (left)
             {
                AfterLobbyLeave();
@@ -383,7 +383,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         return output;
     }
 
-    private async Task GposePoseDataBackgroundTask(int serverIndex, CancellationToken ct)
+    private async Task GposePoseDataBackgroundTask(Guid serverUuid, CancellationToken ct)
     {
         _lastFullPoseData = null;
         _lastDeltaPoseData = null;
@@ -427,7 +427,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
                     && (!poseData.IsDelta || (poseData.IsDelta && !deltaIsSame))))
                 {
                     _forceResendFullPose = false;
-                    await _apiController.GposeLobbyPushPoseData(serverIndex, poseData).ConfigureAwait(false);
+                    await _apiController.GposeLobbyPushPoseData(serverUuid, poseData).ConfigureAwait(false);
                 }
 
                 if (poseData.IsDelta)
@@ -440,7 +440,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         }
     }
 
-    private async Task GposeWorldPositionBackgroundTask(int serverIndex, CancellationToken ct)
+    private async Task GposeWorldPositionBackgroundTask(Guid serverUuid, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
@@ -486,7 +486,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
                 if (_forceResendWorldData || worldData != _lastWorldData)
                 {
                     _forceResendWorldData = false;
-                    await _apiController.GposeLobbyPushWorldData(serverIndex, worldData).ConfigureAwait(false);
+                    await _apiController.GposeLobbyPushWorldData(serverUuid, worldData).ConfigureAwait(false);
                     _lastWorldData = worldData;
                     Logger.LogTrace("WorldData (gpose: {gpose}): {data}", _dalamudUtil.IsInGpose, worldData);
                 }
@@ -629,7 +629,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         }
     }
 
-    private void OnReceiveCharaData(int serverIndex, CharaDataDownloadDto charaDataDownloadDto)
+    private void OnReceiveCharaData(Guid serverUuid, CharaDataDownloadDto charaDataDownloadDto)
     {
         if (!_usersInLobby.TryGetValue(charaDataDownloadDto.Uploader.UID, out var lobbyData))
         {
@@ -639,11 +639,11 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         lobbyData.CharaData = charaDataDownloadDto;
         if (lobbyData.Address != nint.Zero && !string.IsNullOrEmpty(lobbyData.AssociatedCharaName))
         {
-            _ = ApplyCharaData(serverIndex, lobbyData);
+            _ = ApplyCharaData(serverUuid, lobbyData);
         }
     }
 
-    public async Task ApplyCharaData(int serverIndex, GposeLobbyUserData userData)
+    public async Task ApplyCharaData(Guid serverUuid, GposeLobbyUserData userData)
     {
         if (userData.CharaData == null || userData.Address == nint.Zero || string.IsNullOrEmpty(userData.AssociatedCharaName))
             return;
@@ -652,7 +652,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
 
         try
         {
-            await _charaDataManager.ApplyCharaData(serverIndex, userData.CharaData!, userData.AssociatedCharaName).ConfigureAwait(false);
+            await _charaDataManager.ApplyCharaData(serverUuid, userData.CharaData!, userData.AssociatedCharaName).ConfigureAwait(false);
             userData.LastAppliedCharaDataDate = userData.CharaData.UpdatedDate;
             userData.HasPoseDataUpdate = true;
             userData.HasWorldDataUpdate = true;
@@ -665,7 +665,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
 
     private readonly SemaphoreSlim _charaDataSpawnSemaphore = new(1, 1);
 
-    internal async Task SpawnAndApplyData(int serverIndex, GposeLobbyUserData userData)
+    internal async Task SpawnAndApplyData(Guid serverUuid, GposeLobbyUserData userData)
     {
         if (userData.CharaData == null)
             return;
@@ -675,7 +675,7 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         {
             userData.HasPoseDataUpdate = false;
             userData.HasWorldDataUpdate = false;
-            var chara = await _charaDataManager.SpawnAndApplyData(serverIndex, userData.CharaData).ConfigureAwait(false);
+            var chara = await _charaDataManager.SpawnAndApplyData(serverUuid, userData.CharaData).ConfigureAwait(false);
             if (chara == null) return;
             userData.HandledChara = chara;
             userData.AssociatedCharaName = chara.Name;
@@ -707,12 +707,12 @@ public class CharaDataGposeTogetherManager : DisposableMediatorSubscriberBase
         _ = _usersInLobby[userData.UID].SetWorldDataDescriptor(_dalamudUtil);
     }
 
-    private void OnUserJoinLobby(int serverIndex, UserData userData)
+    private void OnUserJoinLobby(Guid serverUuid, UserData userData)
     {
         if (_usersInLobby.ContainsKey(userData.UID))
             OnUserLeaveLobby(userData);
         _usersInLobby[userData.UID] = new(userData);
-        _ = PushCharacterDownloadDto(serverIndex);
+        _ = PushCharacterDownloadDto(serverUuid);
     }
 
     private void OnUserLeaveLobby(UserData msg)

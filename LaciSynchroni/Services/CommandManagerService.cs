@@ -153,28 +153,28 @@ public sealed class CommandManagerService : IDisposable
 
     private async Task ToggleAllServers()
     {
-        foreach (int serverIndex in _serverConfigurationManager.ServerIndexes)
+        foreach (var serverUuid in _serverConfigurationManager.ServerUuids)
         {
-            var isConnected = _apiController.IsServerConnected(serverIndex);
+            var isConnected = _apiController.IsServerConnected(serverUuid);
             if (isConnected)
             {
-                await _apiController.PauseConnectionAsync(serverIndex).ConfigureAwait(false);
+                await _apiController.PauseConnectionAsync(serverUuid).ConfigureAwait(false);
             }
             else
             {
-                await _apiController.CreateConnectionsAsync(serverIndex).ConfigureAwait(false);
+                await _apiController.CreateConnectionsAsync(serverUuid).ConfigureAwait(false);
             }
         }
     }
 
     private async Task DisconnectAllServers()
     {
-        foreach (int serverIndex in _serverConfigurationManager.ServerIndexes)
+        foreach (var serverUuid in _serverConfigurationManager.ServerUuids)
         {
-            var isConnected = _apiController.IsServerConnected(serverIndex);
+            var isConnected = _apiController.IsServerConnected(serverUuid);
             if (isConnected)
             {
-                await _apiController.PauseConnectionAsync(serverIndex).ConfigureAwait(false);
+                await _apiController.PauseConnectionAsync(serverUuid).ConfigureAwait(false);
             }
         }
     }

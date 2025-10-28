@@ -51,12 +51,12 @@ public class DrawEntityFactory
         IImmutableList<Pair> allPairs)
     {
         var pairsToRender = filteredPairs.Select(p => CreateDrawPair(groupFullInfoDto, p)).ToImmutableList();
-        return new DrawFolderGroup(groupFullInfoDto.ServerIndex, groupFullInfoDto.GroupFullInfo, _apiController,
+        return new DrawFolderGroup(groupFullInfoDto.ServerUuid, groupFullInfoDto.GroupFullInfo, _apiController,
             pairsToRender,
             allPairs, _tagHandler, _uidDisplayHandler, _mediator, _uiSharedService);
     }
 
-    public DrawFolderTag CreateDrawTagFolder(TagWithServerIndex tag,
+    public DrawFolderTag CreateDrawTagFolder(TagWithServer tag,
         Dictionary<Pair, List<GroupFullInfoDto>> filteredPairs,
         IImmutableList<Pair> allPairs)
     {

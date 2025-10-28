@@ -10,6 +10,7 @@ using LaciSynchroni.WebAPI.Files.Models;
 using Microsoft.Extensions.Logging;
 using System.Net;
 using System.Net.Http.Json;
+using System;
 
 namespace LaciSynchroni.WebAPI.Files;
 
@@ -63,12 +64,12 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         _downloadStatus.Clear();
     }
 
-    public async Task DownloadFiles(int serverIndex, GameObjectHandler gameObject, List<FileReplacementData> fileReplacementDto, CancellationToken ct)
+    public async Task DownloadFiles(Guid serverUuid, GameObjectHandler gameObject, List<FileReplacementData> fileReplacementDto, CancellationToken ct)
     {
         Mediator.Publish(new HaltScanMessage(nameof(DownloadFiles)));
         try
         {
-            await DownloadFilesInternal(serverIndex, gameObject, fileReplacementDto, ct).ConfigureAwait(false);
+            await DownloadFilesInternal(serverUuid, gameObject, fileReplacementDto, ct).ConfigureAwait(false);
         }
         catch
         {
@@ -136,11 +137,11 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         return (string.Join("", hashName), long.Parse(string.Join("", fileLength)));
     }
 
-    private async Task DownloadAndMungeFileHttpClient(int serverIndex, string downloadGroup, Guid requestId, List<DownloadFileTransfer> fileTransfer, string tempPath, IProgress<long> progress, CancellationToken ct)
+    private async Task DownloadAndMungeFileHttpClient(Guid serverUuid, string downloadGroup, Guid requestId, List<DownloadFileTransfer> fileTransfer, string tempPath, IProgress<long> progress, CancellationToken ct)
     {
         Logger.LogDebug("GUID {requestId} on server {uri} for files {files}", requestId, fileTransfer[0].DownloadUri, string.Join(", ", fileTransfer.Select(c => c.Hash).ToList()));
 
-        await WaitForDownloadReady(serverIndex, fileTransfer, requestId, ct).ConfigureAwait(false);
+        await WaitForDownloadReady(serverUuid, fileTransfer, requestId, ct).ConfigureAwait(false);
 
         _downloadStatus[downloadGroup].DownloadStatus = DownloadStatus.Downloading;
 
@@ -150,7 +151,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         Logger.LogDebug("Downloading {requestUrl} for request {id}", requestUrl, requestId);
         try
         {
-            response = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, requestUrl, ct, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            response = await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Get, requestUrl, ct, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
         }
         catch (HttpRequestException ex)
@@ -217,13 +218,13 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         }
     }
 
-    public async Task<List<DownloadFileTransfer>> InitiateDownloadList(int serverIndex, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
+    public async Task<List<DownloadFileTransfer>> InitiateDownloadList(Guid serverUuid, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
     {
         Logger.LogDebug("Download start: {id}", gameObjectHandler.Name);
 
         List<DownloadFileDto> downloadFileInfoFromService =
         [
-            .. await FilesGetSizes(serverIndex, fileReplacement.Select(f => f.Hash).Distinct(StringComparer.Ordinal).ToList(), ct).ConfigureAwait(false),
+            .. await FilesGetSizes(serverUuid, fileReplacement.Select(f => f.Hash).Distinct(StringComparer.Ordinal).ToList(), ct).ConfigureAwait(false),
         ];
 
         Logger.LogDebug("Files with size 0 or less: {files}", string.Join(", ", downloadFileInfoFromService.Where(f => f.Size <= 0).Select(f => f.Hash)));
@@ -232,17 +233,17 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         {
             if (!_orchestrator.ForbiddenTransfers.Exists(f => string.Equals(f.Hash, dto.Hash, StringComparison.Ordinal)))
             {
-                _orchestrator.ForbiddenTransfers.Add(new DownloadFileTransfer(dto, serverIndex));
+                _orchestrator.ForbiddenTransfers.Add(new DownloadFileTransfer(dto, serverUuid));
             }
         }
 
-        CurrentDownloads = downloadFileInfoFromService.Distinct().Select(d => new DownloadFileTransfer(d, serverIndex))
+        CurrentDownloads = downloadFileInfoFromService.Distinct().Select(d => new DownloadFileTransfer(d, serverUuid))
             .Where(d => d.CanBeTransferred).ToList();
 
         return CurrentDownloads;
     }
 
-    private async Task DownloadFilesInternal(int serverIndex, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
+    private async Task DownloadFilesInternal(Guid serverUuid, GameObjectHandler gameObjectHandler, List<FileReplacementData> fileReplacement, CancellationToken ct)
     {
         var downloadGroups = CurrentDownloads.GroupBy(f => f.DownloadUri.Host + ":" + f.DownloadUri.Port, StringComparer.Ordinal);
 
@@ -268,7 +269,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         async (fileGroup, token) =>
         {
             // let server predownload files
-            var requestIdResponse = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Post, FilesRoutes.RequestEnqueueFullPath(fileGroup.First().DownloadUri),
+            var requestIdResponse = await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Post, FilesRoutes.RequestEnqueueFullPath(fileGroup.First().DownloadUri),
                 fileGroup.Select(c => c.Hash), token).ConfigureAwait(false);
             Logger.LogDebug("Sent request for {n} files on server {uri} with result {result}", fileGroup.Count(), fileGroup.First().DownloadUri,
                 await requestIdResponse.Content.ReadAsStringAsync(token).ConfigureAwait(false));
@@ -296,7 +297,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                         Logger.LogWarning(ex, "Could not set download progress");
                     }
                 });
-                await DownloadAndMungeFileHttpClient(serverIndex, fileGroup.Key, requestId, [.. fileGroup], blockFile, progress, token).ConfigureAwait(false);
+                await DownloadAndMungeFileHttpClient(serverUuid, fileGroup.Key, requestId, [.. fileGroup], blockFile, progress, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -375,14 +376,14 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         ClearDownload();
     }
 
-    private async Task<List<DownloadFileDto>> FilesGetSizes(int serverIndex, List<string> hashes, CancellationToken ct)
+    private async Task<List<DownloadFileDto>> FilesGetSizes(Guid serverUuid, List<string> hashes, CancellationToken ct)
     {
-        var fileCdnUri = _orchestrator.GetFileCdnUri(serverIndex);
+        var fileCdnUri = _orchestrator.GetFileCdnUri(serverUuid);
         if (fileCdnUri == null)
         {
             throw new InvalidOperationException("FileTransferManager is not initialized");
         }
-        var response = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, FilesRoutes.ServerFilesGetSizesFullPath(fileCdnUri), hashes, ct).ConfigureAwait(false);
+        var response = await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Get, FilesRoutes.ServerFilesGetSizesFullPath(fileCdnUri), hashes, ct).ConfigureAwait(false);
         return await response.Content.ReadFromJsonAsync<List<DownloadFileDto>>(cancellationToken: ct).ConfigureAwait(false) ?? [];
     }
 
@@ -416,7 +417,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         }
     }
 
-    private async Task WaitForDownloadReady(int serverIndex, List<DownloadFileTransfer> downloadFileTransfer, Guid requestId, CancellationToken downloadCt)
+    private async Task WaitForDownloadReady(Guid serverUuid, List<DownloadFileTransfer> downloadFileTransfer, Guid requestId, CancellationToken downloadCt)
     {
         bool alreadyCancelled = false;
         try
@@ -435,7 +436,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
                 {
                     if (downloadCt.IsCancellationRequested) throw;
 
-                    var req = await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, FilesRoutes.RequestCheckQueueFullPath(downloadFileTransfer[0].DownloadUri, requestId),
+                    var req = await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Get, FilesRoutes.RequestCheckQueueFullPath(downloadFileTransfer[0].DownloadUri, requestId),
                         downloadFileTransfer.Select(c => c.Hash).ToList(), downloadCt).ConfigureAwait(false);
                     req.EnsureSuccessStatusCode();
                     localTimeoutCts.Dispose();
@@ -455,7 +456,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
         {
             try
             {
-                await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, FilesRoutes.RequestCancelFullPath(downloadFileTransfer[0].DownloadUri, requestId)).ConfigureAwait(false);
+                await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Get, FilesRoutes.RequestCancelFullPath(downloadFileTransfer[0].DownloadUri, requestId)).ConfigureAwait(false);
                 alreadyCancelled = true;
             }
             catch
@@ -471,7 +472,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
             {
                 try
                 {
-                    await _orchestrator.SendRequestAsync(serverIndex, HttpMethod.Get, FilesRoutes.RequestCancelFullPath(downloadFileTransfer[0].DownloadUri, requestId)).ConfigureAwait(false);
+                    await _orchestrator.SendRequestAsync(serverUuid, HttpMethod.Get, FilesRoutes.RequestCancelFullPath(downloadFileTransfer[0].DownloadUri, requestId)).ConfigureAwait(false);
                 }
                 catch
                 {
