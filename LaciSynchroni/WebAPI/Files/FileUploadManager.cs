@@ -243,10 +243,10 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file.Hash] = DateTime.UtcNow;
         }
 
-        var totalSize = CurrentUploads.Sum(c => c.Total);
+        var totalSize = CurrentUploads.Where(c => c.ServerIndex == serverIndex).Sum(c => c.Total);
         Logger.LogDebug("Compressing and uploading files");
         Task uploadTask = Task.CompletedTask;
-        foreach (var file in CurrentUploads.Where(f => f.CanBeTransferred && !f.IsTransferred).ToList())
+        foreach (var file in CurrentUploads.Where(f => f.ServerIndex == serverIndex && f.CanBeTransferred && !f.IsTransferred).ToList())
         {
             Logger.LogDebug("[{hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
@@ -257,11 +257,12 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             uploadToken.ThrowIfCancellationRequested();
         }
 
-        if (CurrentUploads.Any())
+        var uploadsForThisServer = CurrentUploads.Where(c => c.ServerIndex == serverIndex).ToList();
+        if (uploadsForThisServer.Any())
         {
             await uploadTask.ConfigureAwait(false);
 
-            var compressedSize = CurrentUploads.Sum(c => c.Total);
+            var compressedSize = uploadsForThisServer.Sum(c => c.Total);
             Logger.LogDebug("Upload complete, compressed {size} to {compressed}", UiSharedService.ByteToString(totalSize), UiSharedService.ByteToString(compressedSize));
         }
 
@@ -270,7 +271,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-        CurrentUploads.Clear();
+        CurrentUploads.RemoveAll(transfer => transfer.ServerIndex == serverIndex);
     }
 
     private void CancelUpload(ServerIndex serverIndex)
