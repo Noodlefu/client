@@ -109,8 +109,11 @@ public class PlayerDataFactory
         // wait until chara is not drawing and present so nothing spontaneously explodes
         await _dalamudUtil.WaitWhileCharacterIsDrawing(_logger, playerRelatedObject, Guid.NewGuid(), 30000, ct: ct).ConfigureAwait(false);
         int totalWaitTime = 10000;
-        while (!await _dalamudUtil.IsObjectPresentAsync(await _dalamudUtil.CreateGameObjectAsync(playerRelatedObject.Address).ConfigureAwait(false)).ConfigureAwait(false) && totalWaitTime > 0)
+        while (totalWaitTime > 0)
         {
+            var gameObject = await _dalamudUtil.CreateGameObjectAsync(playerRelatedObject.Address).ConfigureAwait(false);
+            if (await _dalamudUtil.IsObjectPresentAsync(gameObject).ConfigureAwait(false))
+                break;
             _logger.LogTrace("Character is null but it shouldn't be, waiting");
             await Task.Delay(50, ct).ConfigureAwait(false);
             totalWaitTime -= 50;
@@ -133,18 +136,38 @@ public class PlayerDataFactory
 
         ct.ThrowIfCancellationRequested();
 
-        fragment.FileReplacements =
-                new HashSet<FileReplacement>(resolvedPaths.Select(c => new FileReplacement([.. c.Value], c.Key)), FileReplacementComparer.Instance)
-                .Where(p => p.HasFileReplacement).ToHashSet();
-        fragment.FileReplacements.RemoveWhere(c => c.GamePaths.Any(g => !CacheMonitor.AllowedFileExtensions.Any(e => g.EndsWith(e, StringComparison.OrdinalIgnoreCase))));
+        // Pre-filter allowed extensions to avoid repeated LINQ lookups
+        var allowedExtensions = new HashSet<string>(CacheMonitor.AllowedFileExtensions, StringComparer.OrdinalIgnoreCase);
+        
+        fragment.FileReplacements = new HashSet<FileReplacement>(FileReplacementComparer.Instance);
+        foreach (var kvp in resolvedPaths)
+        {
+            var replacement = new FileReplacement([.. kvp.Value], kvp.Key);
+            if (!replacement.HasFileReplacement) continue;
+            
+            // Filter out non-allowed extensions using Path.GetExtension for faster lookup
+            bool hasAllowedFile = false;
+            foreach (var gamePath in kvp.Value)
+            {
+                var ext = Path.GetExtension(gamePath);
+                if (allowedExtensions.Contains(ext))
+                {
+                    hasAllowedFile = true;
+                    break;
+                }
+            }
+            
+            if (hasAllowedFile)
+                fragment.FileReplacements.Add(replacement);
+        }
 
         ct.ThrowIfCancellationRequested();
 
         _logger.LogDebug("== Static Replacements ==");
-        foreach (var replacement in fragment.FileReplacements.Where(i => i.HasFileReplacement).OrderBy(i => i.GamePaths.First(), StringComparer.OrdinalIgnoreCase))
+        var staticReplacements = fragment.FileReplacements.Where(i => i.HasFileReplacement).ToList();
+        foreach (var replacement in staticReplacements.OrderBy(i => i.GamePaths.First(), StringComparer.OrdinalIgnoreCase))
         {
             _logger.LogDebug("=> {repl}", replacement);
-            ct.ThrowIfCancellationRequested();
         }
 
         await _transientResourceManager.WaitForRecording(ct).ConfigureAwait(false);
@@ -153,11 +176,15 @@ public class PlayerDataFactory
         // or we get into redraw city for every change and nothing works properly
         if (objectKind == ObjectKind.Pet)
         {
-            foreach (var item in fragment.FileReplacements.Where(i => i.HasFileReplacement).SelectMany(p => p.GamePaths))
+            foreach (var replacement in fragment.FileReplacements)
             {
-                if (_transientResourceManager.AddTransientResource(objectKind, item))
+                if (!replacement.HasFileReplacement) continue;
+                foreach (var item in replacement.GamePaths)
                 {
-                    _logger.LogDebug("Marking static {item} for Pet as transient", item);
+                    if (_transientResourceManager.AddTransientResource(objectKind, item))
+                    {
+                        _logger.LogDebug("Marking static {item} for Pet as transient", item);
+                    }
                 }
             }
 
@@ -170,14 +197,20 @@ public class PlayerDataFactory
         _logger.LogDebug("Handling transient update for {obj}", playerRelatedObject);
 
         // remove all potentially gathered paths from the transient resource manager that are resolved through static resolving
-        _transientResourceManager.ClearTransientPaths(objectKind, fragment.FileReplacements.SelectMany(c => c.GamePaths).ToList());
+        var gamePathsList = new List<string>();
+        foreach (var replacement in fragment.FileReplacements)
+        {
+            gamePathsList.AddRange(replacement.GamePaths);
+        }
+        _transientResourceManager.ClearTransientPaths(objectKind, gamePathsList);
 
         // get all remaining paths and resolve them
         var transientPaths = ManageSemiTransientData(objectKind);
         var resolvedTransientPaths = await GetFileReplacementsFromPaths(transientPaths, new HashSet<string>(StringComparer.Ordinal)).ConfigureAwait(false);
 
         _logger.LogDebug("== Transient Replacements ==");
-        foreach (var replacement in resolvedTransientPaths.Select(c => new FileReplacement([.. c.Value], c.Key)).OrderBy(f => f.ResolvedPath, StringComparer.Ordinal))
+        var transientReplacements = resolvedTransientPaths.Select(c => new FileReplacement([.. c.Value], c.Key)).ToList();
+        foreach (var replacement in transientReplacements.OrderBy(f => f.ResolvedPath, StringComparer.Ordinal))
         {
             _logger.LogDebug("=> {repl}", replacement);
             fragment.FileReplacements.Add(replacement);
@@ -188,17 +221,29 @@ public class PlayerDataFactory
 
         ct.ThrowIfCancellationRequested();
 
-        // make sure we only return data that actually has file replacements
-        fragment.FileReplacements = new HashSet<FileReplacement>(fragment.FileReplacements.Where(v => v.HasFileReplacement).OrderBy(v => v.ResolvedPath, StringComparer.Ordinal), FileReplacementComparer.Instance);
+        // make sure we only return data that actually has file replacements - filter inline
+        var validReplacements = new List<FileReplacement>();
+        foreach (var replacement in fragment.FileReplacements)
+        {
+            if (replacement.HasFileReplacement)
+                validReplacements.Add(replacement);
+        }
+        validReplacements.Sort((a, b) => string.Compare(a.ResolvedPath, b.ResolvedPath, StringComparison.Ordinal));
+        fragment.FileReplacements = new HashSet<FileReplacement>(validReplacements, FileReplacementComparer.Instance);
 
-        // gather up data from ipc
+        // gather up data from ipc in parallel
         Task<string> getHeelsOffset = _ipcManager.Heels.GetOffsetAsync();
         Task<string> getGlamourerData = _ipcManager.Glamourer.GetCharacterCustomizationAsync(playerRelatedObject.Address);
         Task<string?> getCustomizeData = _ipcManager.CustomizePlus.GetScaleAsync(playerRelatedObject.Address);
         Task<string> getHonorificTitle = _ipcManager.Honorific.GetTitle();
-        fragment.GlamourerString = await getGlamourerData.ConfigureAwait(false);
+        
+        // Await all IPC calls in parallel
+        await Task.WhenAll(getHeelsOffset, getGlamourerData, getCustomizeData, getHonorificTitle).ConfigureAwait(false);
+        
+        fragment.GlamourerString = getGlamourerData.Result;
         _logger.LogDebug("Glamourer is now: {data}", fragment.GlamourerString);
-        var customizeScale = await getCustomizeData.ConfigureAwait(false);
+        
+        var customizeScale = getCustomizeData.Result;
         fragment.CustomizePlusScale = customizeScale ?? string.Empty;
         _logger.LogDebug("Customize is now: {data}", fragment.CustomizePlusScale);
 
@@ -207,10 +252,10 @@ public class PlayerDataFactory
             var playerFragment = (fragment as CharacterDataFragmentPlayer)!;
             playerFragment.ManipulationString = _ipcManager.Penumbra.GetMetaManipulations();
 
-            playerFragment!.HonorificData = await getHonorificTitle.ConfigureAwait(false);
+            playerFragment!.HonorificData = getHonorificTitle.Result;
             _logger.LogDebug("Honorific is now: {data}", playerFragment!.HonorificData);
 
-            playerFragment!.HeelsData = await getHeelsOffset.ConfigureAwait(false);
+            playerFragment!.HeelsData = getHeelsOffset.Result;
             _logger.LogDebug("Heels is now: {heels}", playerFragment!.HeelsData);
 
             playerFragment!.MoodlesData = await _ipcManager.Moodles.GetStatusAsync(playerRelatedObject.Address).ConfigureAwait(false) ?? string.Empty;
@@ -222,12 +267,11 @@ public class PlayerDataFactory
 
         ct.ThrowIfCancellationRequested();
 
-        var toCompute = fragment.FileReplacements.Where(f => !f.IsFileSwap).ToArray();
-        _logger.LogDebug("Getting Hashes for {amount} Files", toCompute.Length);
+        var toCompute = fragment.FileReplacements.Where(f => !f.IsFileSwap).ToList();
+        _logger.LogDebug("Getting Hashes for {amount} Files", toCompute.Count);
         var computedPaths = _fileCacheManager.GetFileCachesByPaths(toCompute.Select(c => c.ResolvedPath).ToArray());
         foreach (var file in toCompute)
         {
-            ct.ThrowIfCancellationRequested();
             file.Hash = computedPaths[file.ResolvedPath]?.Hash ?? string.Empty;
         }
         var removed = fragment.FileReplacements.RemoveWhere(f => !f.IsFileSwap && string.IsNullOrEmpty(f.Hash));
@@ -271,8 +315,21 @@ public class PlayerDataFactory
 
         if (boneIndices.All(u => u.Value.Count == 0)) return;
 
+        // Cache the expensive LINQ operation
+        int maxPlayerBoneIndex = boneIndices.SelectMany(b => b.Value).Max();
+
+        // Pre-filter PAP files to avoid repeated Where().First() calls
+        var papFiles = new List<FileReplacement>();
+        foreach (var file in fragment.FileReplacements)
+        {
+            if (!file.IsFileSwap && file.GamePaths.First().EndsWith("pap", StringComparison.OrdinalIgnoreCase))
+            {
+                papFiles.Add(file);
+            }
+        }
+
         int noValidationFailed = 0;
-        foreach (var file in fragment.FileReplacements.Where(f => !f.IsFileSwap && f.GamePaths.First().EndsWith("pap", StringComparison.OrdinalIgnoreCase)).ToList())
+        foreach (var file in papFiles)
         {
             ct.ThrowIfCancellationRequested();
 
@@ -280,24 +337,33 @@ public class PlayerDataFactory
             bool validationFailed = false;
             if (skeletonIndices != null)
             {
-                // 105 is the maximum vanilla skellington spoopy bone index
-                if (skeletonIndices.All(k => k.Value.Max() <= 105))
+                // Pre-compute max values for all skeletons in one pass
+                bool allValidIndices = true;
+                foreach (var boneCount in skeletonIndices)
+                {
+                    int maxBoneIndex = boneCount.Value.Max();
+                    // 105 is the maximum vanilla skellington spoopy bone index
+                    if (maxBoneIndex <= 105) continue;
+                    
+                    allValidIndices = false;
+                    if (maxBoneIndex > maxPlayerBoneIndex)
+                    {
+                        _logger.LogWarning("Found more bone indices on the animation {path} skeleton {skl} (max indice {idx}) than on any player related skeleton (max indice {idx2})",
+                            file.ResolvedPath, boneCount.Key, maxBoneIndex, maxPlayerBoneIndex);
+                        validationFailed = true;
+                        break;
+                    }
+                }
+                
+                if (!validationFailed && allValidIndices)
                 {
                     _logger.LogTrace("All indices of {path} are <= 105, ignoring", file.ResolvedPath);
                     continue;
                 }
 
-                _logger.LogDebug("Verifying bone indices for {path}, found {x} skeletons", file.ResolvedPath, skeletonIndices.Count);
-
-                foreach (var boneCount in skeletonIndices.Select(k => k).ToList())
+                if (!validationFailed && skeletonIndices.Count > 0)
                 {
-                    if (boneCount.Value.Max() > boneIndices.SelectMany(b => b.Value).Max())
-                    {
-                        _logger.LogWarning("Found more bone indices on the animation {path} skeleton {skl} (max indice {idx}) than on any player related skeleton (max indice {idx2})",
-                            file.ResolvedPath, boneCount.Key, boneCount.Value.Max(), boneIndices.SelectMany(b => b.Value).Max());
-                        validationFailed = true;
-                        break;
-                    }
+                    _logger.LogDebug("Verifying bone indices for {path}, found {x} skeletons", file.ResolvedPath, skeletonIndices.Count);
                 }
             }
 

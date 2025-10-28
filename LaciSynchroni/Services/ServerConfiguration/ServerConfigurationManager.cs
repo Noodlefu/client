@@ -81,26 +81,35 @@ public class ServerConfigurationManager
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
         var worldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult();
-        var cid = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult();
+        
+        ulong cid = 0;
+        try
+        {
+            cid = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetOAuth2: Failed to get CID for {chara} on {world}, using 0 as default", charaName, worldId);
+        }
 
         var auth = currentServer.Authentications.FindAll(f => string.Equals(f.CharacterName, charaName) && f.WorldId == worldId);
         if (auth.Count >= 2)
         {
-            _logger.LogTrace("GetOAuth2 accessed, returning null because multiple ({count}) identical characters.", auth.Count);
+            _logger.LogWarning("GetOAuth2 accessed, returning null because multiple ({count}) identical characters for {chara} on {world}", auth.Count, charaName, worldId);
             hasMulti = true;
             return null;
         }
 
         if (auth.Count == 0)
         {
-            _logger.LogTrace("GetOAuth2 accessed, returning null because no set up characters for {chara} on {world}", charaName, worldId);
+            _logger.LogWarning("GetOAuth2 accessed, returning null because no set up characters for {chara} on {world}", charaName, worldId);
             return null;
         }
 
         if (auth.Single().LastSeenCID != cid)
         {
             auth.Single().LastSeenCID = cid;
-            _logger.LogTrace("GetOAuth2 accessed, updating CID for {chara} on {world} to {cid}", charaName, worldId, cid);
+            _logger.LogDebug("GetOAuth2 accessed, updating CID for {chara} on {world} to {cid}", charaName, worldId, cid);
             Save();
         }
 
@@ -110,7 +119,8 @@ public class ServerConfigurationManager
             return (currentServer.OAuthToken, auth.Single().UID!);
         }
 
-        _logger.LogTrace("GetOAuth2 accessed, returning null because no UID found for {chara} on {world} or OAuthToken is not configured.", charaName, worldId);
+        _logger.LogWarning("GetOAuth2 accessed, returning null because no UID found for {chara} on {world} or OAuthToken is not configured (UID: {uid}, OAuthToken: {hasOAuth})", 
+            charaName, worldId, auth.Single().UID ?? "null", !string.IsNullOrEmpty(currentServer.OAuthToken));
 
         return null;
     }
@@ -122,7 +132,16 @@ public class ServerConfigurationManager
 
         var charaName = _dalamudUtil.GetPlayerNameAsync().GetAwaiter().GetResult();
         var worldId = _dalamudUtil.GetHomeWorldIdAsync().GetAwaiter().GetResult();
-        var cid = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult();
+        
+        ulong cid = 0;
+        try
+        {
+            cid = _dalamudUtil.GetCIDAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "GetSecretKey: Failed to get CID for {chara} on {world}, using 0 as default", charaName, worldId);
+        }
         if (!currentServer.Authentications.Any() && currentServer.SecretKeys.Any())
         {
             currentServer.Authentications.Add(new Authentication()

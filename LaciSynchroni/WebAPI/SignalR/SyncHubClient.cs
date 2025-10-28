@@ -292,10 +292,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
     {
         _serverState = ServerState.Disconnecting;
 
-        _logger.LogInformation("Stopping existing connection to {ServerName}", ServerToUse.ServerName);
-
         if (_connection != null && !_isDisposed)
         {
+            _logger.LogInformation("Stopping existing connection to {ServerName}", ServerToUse.ServerName);
             _logger.LogDebug("Disposing current HubConnection");
             _isDisposed = true;
 
@@ -313,8 +312,6 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
             Mediator.Publish(new DisconnectedMessage(ServerUuid));
             _connection = null;
             ConnectionDto = null;
-
-            _connection = null;
 
             Logger.LogDebug("Current HubConnection disposed");
         }

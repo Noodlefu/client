@@ -318,6 +318,10 @@ public class DalamudUtilService : IHostedService, IMediatorSubscriber
     {
         EnsureIsOnFramework();
         var playerChar = GetPlayerCharacter();
+        if (playerChar == null)
+        {
+            throw new InvalidOperationException("Cannot get Content ID: LocalPlayer is not loaded yet");
+        }
         return ((BattleChara*)playerChar.Address)->Character.ContentId;
     }
 
