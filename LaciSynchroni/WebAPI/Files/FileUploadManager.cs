@@ -42,6 +42,7 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
     }
 
     public List<FileTransfer> CurrentUploads { get; } = [];
+    private readonly object _currentUploadsLock = new object();
 
     public async Task DeleteAllFiles(Guid serverUuid)
     {
@@ -185,13 +186,13 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
 
         Progress<UploadProgress>? prog = !postProgress ? null : new((prog) =>
         {
-            try
+            lock (_currentUploadsLock)
             {
-                CurrentUploads.Single(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerUuid == serverUuid).Transferred = prog.Uploaded;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "[{hash}] Could not set upload progress", fileHash);
+                var upload = CurrentUploads.FirstOrDefault(f => string.Equals(f.Hash, fileHash, StringComparison.Ordinal) && f.ServerUuid == serverUuid);
+                if (upload != null)
+                {
+                    upload.Transferred = prog.Uploaded;
+                }
             }
         });
 
@@ -243,11 +244,15 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
         var totalSize = CurrentUploads.Sum(c => c.Total);
         Logger.LogDebug("Compressing and uploading files");
         Task uploadTask = Task.CompletedTask;
-        foreach (var file in CurrentUploads.Where(f => f.CanBeTransferred && !f.IsTransferred).ToList())
+        foreach (var file in CurrentUploads.Where(f => f.CanBeTransferred && !f.IsTransferred && f.ServerUuid == serverUuid).ToList())
         {
             Logger.LogDebug("[{hash}] Compressing", file);
             var data = await _fileDbManager.GetCompressedFileData(file.Hash, uploadToken).ConfigureAwait(false);
-            CurrentUploads.Single(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerUuid == serverUuid).Total = data.Item2.Length;
+            var upload = CurrentUploads.FirstOrDefault(e => string.Equals(e.Hash, data.Item1, StringComparison.Ordinal) && e.ServerUuid == serverUuid);
+            if (upload != null)
+            {
+                upload.Total = data.Item2.Length;
+            }
             Logger.LogDebug("[{hash}] Starting upload for {filePath}", data.Item1, _fileDbManager.GetFileCacheByHash(data.Item1)!.ResolvedFilepath);
             await uploadTask.ConfigureAwait(false);
             uploadTask = UploadFile(serverUuid, data.Item2, file.Hash, true, uploadToken);
@@ -267,7 +272,8 @@ public sealed class FileUploadManager : DisposableMediatorSubscriberBase
             _verifiedUploadedHashes[file] = DateTime.UtcNow;
         }
 
-        CurrentUploads.Clear();
+        // Only clear uploads for this specific server
+        CurrentUploads.RemoveAll(transfer => transfer.ServerUuid == serverUuid);
     }
 
     private void CancelUpload(Guid serverUuid)
