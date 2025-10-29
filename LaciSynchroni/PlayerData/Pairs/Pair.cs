@@ -26,6 +26,7 @@ public class Pair
     public readonly int ServerIndex;
     private CancellationTokenSource _applicationCts = new();
     private OnlineUserIdentDto? _onlineUserIdentDto = null;
+    private ushort? _visibleHomeWorldId;
 
     public Pair(ILogger<Pair> logger, UserFullPairDto userPair, PairHandlerFactory cachedPlayerFactory,
         SyncMediator mediator, ServerConfigurationManager serverConfigurationManager, int serverIndex)
@@ -53,6 +54,7 @@ public class Pair
     public long LastAppliedDataTris { get; set; } = -1;
     public long LastAppliedApproximateVRAMBytes { get; set; } = -1;
     public string Ident => _onlineUserIdentDto?.Ident ?? string.Empty;
+    public ushort? VisibleHomeWorldId => _visibleHomeWorldId;
 
     public UserData UserData => UserPair.User;
 
@@ -201,6 +203,7 @@ public class Pair
             CachedPlayer = null;
             player?.Dispose();
             _onlineUserIdentDto = null;
+            UpdateVisibleHomeWorldId(null);
         }
         finally
         {
@@ -212,6 +215,15 @@ public class Pair
     public void SetNote(string note)
     {
         _serverConfigurationManager.SetNoteForUid(ServerIndex, UserData.UID, note);
+    }
+
+    internal void UpdateVisibleHomeWorldId(ushort? homeWorldId)
+    {
+        if (_visibleHomeWorldId == homeWorldId)
+            return;
+
+        _visibleHomeWorldId = homeWorldId;
+        _mediator.Publish(new RefreshUiMessage());
     }
 
     internal void SetIsUploading()
