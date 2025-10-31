@@ -60,13 +60,160 @@ public class DrawUserPair
     public Pair Pair => _pair;
     public UserFullPairDto UserPair => _pair.UserPair!;
 
-    public void DrawPairedClient(string? displayNameOverride = null)
+    public string BuildPairingInfoSection(bool includeAllGroups)
+    {
+        var pairingMethods = new List<string>();
+
+        if (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional)
+        {
+            pairingMethods.Add("You are directly Paired");
+            return string.Join(Environment.NewLine, pairingMethods);
+        }
+        
+        if (_pair.IndividualPairStatus == IndividualPairStatus.OneSided)
+        {
+            pairingMethods.Add("User has not added you back");
+            return string.Join(Environment.NewLine, pairingMethods);
+        }
+
+        if (includeAllGroups && _syncedGroups.Count > 0)
+        {
+            foreach (var g in _syncedGroups)
+            {
+                var groupNote = _serverConfigurationManager.GetNoteForGid(_pair.ServerIndex, g.GID);
+                var groupString = string.IsNullOrEmpty(groupNote) ? g.GroupAliasOrGID : $"{groupNote} ({g.GroupAliasOrGID})";
+                pairingMethods.Add($"Paired through {groupString}");
+            }
+        }
+        else if (!includeAllGroups && _syncedGroups.Count > 0)
+        {
+            var g = _syncedGroups[0];
+            var groupNote = _serverConfigurationManager.GetNoteForGid(_pair.ServerIndex, g.GID);
+            var groupString = string.IsNullOrEmpty(groupNote) ? g.GroupAliasOrGID : $"{groupNote} ({g.GroupAliasOrGID})";
+            pairingMethods.Add($"Paired through {groupString}");
+        }
+        else
+        {
+            pairingMethods.Add("Paired through syncshell");
+        }
+
+        return string.Join(Environment.NewLine, pairingMethods);
+    }
+
+    public string GetTooltipText(bool includeServerName = true, bool includeAllGroups = true, bool includeModInfo = true)
+    {
+        var sections = new List<string>();
+
+        // Section 1: Server Name
+        if (includeServerName && _pair.ServerIndex >= 0)
+        {
+            sections.Add(_apiController.GetServerNameByIndex(_pair.ServerIndex));
+        }
+
+        // Section 2: Status
+        if (_pair.IsPaused)
+        {
+            sections.Add(_pair.UserData.AliasOrUID + " is paused");
+        }
+        else if (_pair.IsVisible)
+        {
+            sections.Add(_pair.UserData.AliasOrUID + " is visible: " + _pair.PlayerName);
+            sections.Add("Click to target this player");
+        }
+        else if (_pair.IsOnline)
+        {
+            sections.Add(_pair.UserData.AliasOrUID + " is online");
+        }
+        else
+        {
+            sections.Add(_pair.UserData.AliasOrUID + " is offline");
+        }
+
+        // Section 3: Pairing Information
+        var pairingInfo = BuildPairingInfoSection(includeAllGroups);
+        if (!string.IsNullOrEmpty(pairingInfo))
+        {
+            sections.Add(pairingInfo);
+        }
+
+        // Section 4: Mod Info
+        if (includeModInfo)
+        {
+            var modInfoText = GetModInfoText(_pair, (!_pair.IsPaired) ? "(Last) " : null);
+            if (!string.IsNullOrEmpty(modInfoText))
+            {
+                sections.Add(modInfoText);
+            }
+        }
+
+        return string.Join(UiSharedService.TooltipSeparator, sections.Where(s => !string.IsNullOrEmpty(s)));
+    }
+
+    public string GetPairedViaText()
+    {
+        if (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional)
+        {
+            return "You are directly Paired";
+        }
+
+        if (_syncedGroups.Count > 0)
+        {
+            var g = _syncedGroups[0];
+            var groupNote = _serverConfigurationManager.GetNoteForGid(_pair.ServerIndex, g.GID);
+            var groupString = string.IsNullOrEmpty(groupNote) ? g.GroupAliasOrGID : $"{groupNote} ({g.GroupAliasOrGID})";
+            return $"Paired through {groupString}";
+        }
+
+        return "Paired through syncshell";
+    }
+
+    public static string GetModInfoText(Pair pair, string? prefix = null)
+    {
+        if (pair.LastAppliedDataBytes < 0 && pair.LastAppliedApproximateVRAMBytes < 0 && pair.LastAppliedDataTris < 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(prefix))
+        {
+            sb.Append(prefix);
+        }
+        sb.Append("Mods Info").AppendLine();
+        
+        if (pair.LastAppliedDataBytes >= 0)
+        {
+            sb.Append("Files Size: ")
+                .Append(UiSharedService.ByteToString(pair.LastAppliedDataBytes, true))
+                .AppendLine();
+        }
+        
+        if (pair.LastAppliedApproximateVRAMBytes >= 0)
+        {
+            sb.Append("Approx. VRAM Usage: ")
+                .Append(UiSharedService.ByteToString(pair.LastAppliedApproximateVRAMBytes, true))
+                .AppendLine();
+        }
+        
+        if (pair.LastAppliedDataTris >= 0)
+        {
+            var tris = pair.LastAppliedDataTris > 1000
+                ? ($"{pair.LastAppliedDataTris / 1000d:0.0'k'}")
+                : pair.LastAppliedDataTris.ToString();
+            sb.Append("Approx. Triangle Count (excl. Vanilla): ")
+                .Append(tris).AppendLine();
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    public void DrawPairedClient(string? displayNameOverride = null, bool showTooltip = true, bool showIcon = true)
     {
         using var id = ImRaii.PushId(GetType() + _id);
         var color = ImRaii.PushColor(ImGuiCol.ChildBg, ImGui.GetColorU32(ImGuiCol.FrameBgHovered), _wasHovered);
         using (ImRaii.Child(GetType() + _id, new Vector2(UiSharedService.GetWindowContentRegionWidth() - ImGui.GetCursorPosX(), ImGui.GetFrameHeight())))
         {
-            DrawLeftSide();
+            DrawLeftSide(showTooltip, showIcon);
             ImGui.SameLine();
             var posX = ImGui.GetCursorPosX();
             var rightSide = DrawRightSide();
@@ -190,97 +337,45 @@ public class DrawUserPair
         }
     }
 
-    private void DrawLeftSide()
+    private void DrawLeftSide(bool showTooltip = true, bool showIcon = true)
     {
-        string userPairText = string.Empty;
-
         ImGui.AlignTextToFramePadding();
 
-        if (_pair.ServerIndex >= 0)
+        if (showIcon)
         {
-            userPairText = _apiController.GetServerNameByIndex(_pair.ServerIndex);
-        }
-
-        if (_pair.IsPaused)
-        {
-            using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudYellow);
-            _uiSharedService.IconText(FontAwesomeIcon.PauseCircle);
-            userPairText = _pair.UserData.AliasOrUID + " is paused";
-        }
-        else if (_pair.IsVisible)
-        {
-            _uiSharedService.IconText(FontAwesomeIcon.Eye, ImGuiColors.ParsedGreen);
-
-            if (!string.IsNullOrEmpty(userPairText))
-                userPairText += UiSharedService.TooltipSeparator;
-
-            userPairText += _pair.UserData.AliasOrUID + " is visible: " + _pair.PlayerName + Environment.NewLine + "Click to target this player";
-            if (ImGui.IsItemClicked())
+            if (_pair.IsPaused)
             {
-                _mediator.Publish(new TargetPairMessage(_pair));
+                using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudYellow);
+                _uiSharedService.IconText(FontAwesomeIcon.PauseCircle);
             }
-        }
-        else if (_pair.IsOnline)
-        {
-            using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.HealerGreen);
-            _uiSharedService.IconText(_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional
-                ? FontAwesomeIcon.User : FontAwesomeIcon.Users);
-            if (!string.IsNullOrEmpty(userPairText))
-                userPairText += UiSharedService.TooltipSeparator;
-
-            userPairText += _pair.UserData.AliasOrUID + " is online";
-        }
-        else
-        {
-            using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudRed);
-            _uiSharedService.IconText(_pair.IndividualPairStatus == IndividualPairStatus.OneSided
-                ? FontAwesomeIcon.ArrowsLeftRight
-                : (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional
-                    ? FontAwesomeIcon.User : FontAwesomeIcon.Users));
-
-            if(!string.IsNullOrEmpty(userPairText))
-                userPairText += UiSharedService.TooltipSeparator;
-
-            userPairText += _pair.UserData.AliasOrUID + " is offline";
-        }
-
-        if (_pair.IndividualPairStatus == IndividualPairStatus.OneSided)
-        {
-            userPairText += UiSharedService.TooltipSeparator + "User has not added you back";
-        }
-        else if (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional)
-        {
-            userPairText += UiSharedService.TooltipSeparator + "You are directly Paired";
-        }
-
-        if (_pair.LastAppliedDataBytes >= 0)
-        {
-            userPairText += UiSharedService.TooltipSeparator;
-            userPairText += ((!_pair.IsPaired) ? "(Last) " : string.Empty) + "Mods Info" + Environment.NewLine;
-            userPairText += "Files Size: " + UiSharedService.ByteToString(_pair.LastAppliedDataBytes, true);
-            if (_pair.LastAppliedApproximateVRAMBytes >= 0)
+            else if (_pair.IsVisible)
             {
-                userPairText += Environment.NewLine + "Approx. VRAM Usage: " + UiSharedService.ByteToString(_pair.LastAppliedApproximateVRAMBytes, true);
-            }
-            if (_pair.LastAppliedDataTris >= 0)
-            {
-                userPairText += Environment.NewLine + "Approx. Triangle Count (excl. Vanilla): "
-                    + (_pair.LastAppliedDataTris > 1000 ? (_pair.LastAppliedDataTris / 1000d).ToString("0.0'k'") : _pair.LastAppliedDataTris);
-            }
-        }
-
-        if (_syncedGroups.Count > 0)
-        {
-            userPairText += UiSharedService.TooltipSeparator + string.Join(Environment.NewLine,
-                _syncedGroups.Select(g =>
+                _uiSharedService.IconText(FontAwesomeIcon.Eye, ImGuiColors.ParsedGreen);
+                if (ImGui.IsItemClicked())
                 {
-                    var groupNote = _serverConfigurationManager.GetNoteForGid(_pair.ServerIndex, g.GID);
-                    var groupString = string.IsNullOrEmpty(groupNote) ? g.GroupAliasOrGID : $"{groupNote} ({g.GroupAliasOrGID})";
-                    return "Paired through " + groupString;
-                }));
+                    _mediator.Publish(new TargetPairMessage(_pair));
+                }
+            }
+            else if (_pair.IsOnline)
+            {
+                using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.HealerGreen);
+                _uiSharedService.IconText(_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional
+                    ? FontAwesomeIcon.User : FontAwesomeIcon.Users);
+            }
+            else
+            {
+                using var _ = ImRaii.PushColor(ImGuiCol.Text, ImGuiColors.DalamudRed);
+                _uiSharedService.IconText(_pair.IndividualPairStatus == IndividualPairStatus.OneSided
+                    ? FontAwesomeIcon.ArrowsLeftRight
+                    : (_pair.IndividualPairStatus == IndividualPairStatus.Bidirectional
+                        ? FontAwesomeIcon.User : FontAwesomeIcon.Users));
+            }
         }
 
-        UiSharedService.AttachToolTip(userPairText);
+        if (showTooltip)
+        {
+            UiSharedService.AttachToolTip(GetTooltipText());
+        }
 
         if (_performanceConfigService.Current.ShowPerformanceIndicator
             && !_performanceConfigService.Current.UIDsToIgnore
