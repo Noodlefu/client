@@ -55,7 +55,13 @@ public class FileTransferOrchestrator : DisposableMediatorSubscriberBase
         });
     }
 
-    public List<FileTransfer> ForbiddenTransfers { get; } = [];
+    private readonly ConcurrentDictionary<string, FileTransfer> _forbiddenTransfers = new(StringComparer.Ordinal);
+
+    public List<FileTransfer> ForbiddenTransfers => _forbiddenTransfers.Values.ToList();
+
+    public bool IsForbidden(string hash) => _forbiddenTransfers.ContainsKey(hash);
+
+    public bool TryAddForbiddenTransfer(FileTransfer transfer) => _forbiddenTransfers.TryAdd(transfer.Hash, transfer);
 
     public Uri? GetFileCdnUri(int serverIndex)
     {

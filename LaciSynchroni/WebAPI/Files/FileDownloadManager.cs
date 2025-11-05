@@ -230,10 +230,7 @@ public partial class FileDownloadManager : DisposableMediatorSubscriberBase
 
         foreach (var dto in downloadFileInfoFromService.Where(c => c.IsForbidden))
         {
-            if (!_orchestrator.ForbiddenTransfers.Exists(f => string.Equals(f.Hash, dto.Hash, StringComparison.Ordinal)))
-            {
-                _orchestrator.ForbiddenTransfers.Add(new DownloadFileTransfer(dto, serverIndex));
-            }
+            _orchestrator.TryAddForbiddenTransfer(new DownloadFileTransfer(dto, serverIndex));
         }
 
         CurrentDownloads = downloadFileInfoFromService.Distinct().Select(d => new DownloadFileTransfer(d, serverIndex))
