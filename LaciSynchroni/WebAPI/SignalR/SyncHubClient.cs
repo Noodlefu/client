@@ -233,7 +233,9 @@ public partial class SyncHubClient : DisposableMediatorSubscriberBase, IServerHu
 
     private async Task<string?> FindHubUrl()
     {
-        var configuredHubUri = ServerToUse.ServerHubUri.Replace("wss://", "https://").Replace("ws://", "http://");
+        var configuredHubUri = ServerToUse.UseAdvancedUris
+            ? ServerToUse.ServerHubUri.Replace("wss://", "https://").Replace("ws://", "http://")
+            : string.Empty;
         var baseUri = ServerToUse.ServerUri.Replace("wss://", "https://").Replace("ws://", "http://");
         if (baseUri.EndsWith("/", StringComparison.Ordinal))
         {
